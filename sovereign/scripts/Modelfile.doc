@@ -1,0 +1,5 @@
+# Writer: general instruct model for formal prose and orchestration. Swap to qwen3:14b if
+# Laptop A has >= 24 GB VRAM.
+FROM qwen3:8b
+PARAMETER num_ctx 32768
+PARAMETER temperature 0.3

@@ -1,0 +1,5 @@
+# Reader: document-trained vision model with tool support. Ollama's default num_ctx (a few
+# thousand tokens) silently truncates system prompt + tool schemas - raise it.
+FROM qwen2.5vl:7b
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.1
