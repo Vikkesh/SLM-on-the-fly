@@ -12,9 +12,10 @@ if ! pgrep -x ollama >/dev/null; then
   sleep 3
 fi
 
-echo ">> pulling base models (needs internet, ~11 GB)"
-ollama pull qwen2.5vl:7b
-ollama pull qwen3:8b
+echo ">> checking the base models are present (they are not downloaded here)"
+for m in qwen2.5vl:7b qwen3:8b; do
+  ollama list | grep -q "^$m" && echo "   $m OK" || { echo "   $m MISSING - it must already be on this machine"; exit 1; }
+done
 
 echo ">> creating aliases with raised context windows"
 ollama create vision-model -f Modelfile.vision

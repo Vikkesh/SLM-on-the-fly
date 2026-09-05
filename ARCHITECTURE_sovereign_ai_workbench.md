@@ -367,8 +367,7 @@ export OLLAMA_KEEP_ALIVE=-1               # never unload — a reload mid-demo i
 export OLLAMA_MAX_LOADED_MODELS=2
 ollama serve
 
-ollama pull qwen2.5vl:7b
-ollama pull qwen3:8b
+ollama list | grep -E "qwen2.5vl:7b|qwen3:8b"     # both must already be present (no download here)
 ollama create vision-model -f Modelfile.vision
 ollama create doc-model    -f Modelfile.doc
 

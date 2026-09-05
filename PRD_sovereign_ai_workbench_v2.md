@@ -151,7 +151,7 @@ Follow-up turn in the same session ("make the tone more formal," "add a correcti
 ## 8. Build Order (fits 5-hour window)
 
 **Laptop A — while online**
- 1. Ollama with `OLLAMA_HOST=0.0.0.0:11434`, `KEEP_ALIVE=-1`, `MAX_LOADED_MODELS=2`; pull both models; create `vision-model` / `doc-model` from Modelfiles; `ollama show` both and confirm `vision`/`tools` capabilities. Confirm image input works over `/v1` from Laptop B (`curl http://<A>:11434/v1/models` first). — 30 min
+ 1. Ollama with `OLLAMA_HOST=0.0.0.0:11434`, `KEEP_ALIVE=-1`, `MAX_LOADED_MODELS=2`; confirm both models are already present (`ollama list`); create `vision-model` / `doc-model` aliases from Modelfiles (no download - an alias reuses the existing weights); `ollama show` both and confirm `vision`/`tools` capabilities. Confirm image input works over `/v1` from Laptop B (`curl http://<A>:11434/v1/models` first). — 30 min
 
 **Laptop B — while online**
 2. `apt install bubblewrap socat ripgrep tesseract-ocr poppler-utils`; `bwrap --dev-bind / / true` must succeed; Node 22; `npx @truefoundry/trueforge@latest` and confirm the log line `Local sandbox fallback is available`. — 20 min
