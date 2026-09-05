@@ -88,9 +88,9 @@ The agents bind to `vision-model` and `doc-model`, so a model swap later is one 
                                          ║   │  extract_from_scan  ← OCR   │  │  TrueForge)  │ ║
                                          ║   │  generate_docx      ← docx  │  │              │ ║
                                          ║   │  generate_xlsx      ← xlsx* │  │ .venv        │ ║
-                                         ║   │                             │  │ skills/ (git)│ ║
-                                         ║   │  approval gating: OFF       │  │  scan-to-    │ ║
-                                         ║   └─────────────────────────────┘  │  approval/   │ ║
+                                         ║   │                             │  │ Flow 6 only  │ ║
+                                         ║   │  approval gating: OFF       │  │              │ ║
+                                         ║   └─────────────────────────────┘  │              │ ║
                                          ║                                    └──────────────┘ ║
                                          ║   output/   ← generated .docx land here             ║
                                          ╚═════════════════════════════════════════════════════╝
@@ -159,7 +159,7 @@ compaction, sandbox lifecycle, and file download.
 | --- | --- | --- | --- |
 | model | `custom/vision-model` | `custom/doc-model` | |
 | MCP servers | `sovereign-tools` (optional) | `sovereign-tools` | Doc Agent drives the tools; Vision Agent may, as fallback |
-| skills | none | `scan-to-approval-note` | procedure only matters where tools are called |
+| skills | none | none (procedure embedded in `instructions`) | TrueForge only accepts github.com/gitlab.com skill URLs — unusable offline |
 | `config.sandbox.enabled` | `false` | `true` | skills + Flow 6 need it; Vision Agent has no use for it |
 | `dynamic_sub_agents` | `false` | `false` | on by default; adds prompt + schema weight a 7–8B model can't afford |
 | `generative_ui` | `false` | `false` | same |
@@ -194,11 +194,21 @@ Hard prerequisites on Laptop B (Linux): `bwrap`, `socat`, `rg`. First init pip-i
 online**. Anything the agent's code will import (`openpyxl`, `pandas`) must be installed in
 the same online window.
 
-### 4.6 Skill: `scan-to-approval-note`
+Its only job is **Flow 6** (running code the Doc Agent writes). File reading never goes through
+it, and — since skills turned out to be unusable offline (§4.6) — it no longer hosts anything.
 
-A skill is a **git repository** cloned into the sandbox at `/opt/tfy/skills/{name}`; it needs
-`config.sandbox.enabled: true`. Ours lives in a local repo on Laptop B and is never fetched
-from GitHub. Attached to the Doc Agent only.
+### 4.6 Procedure: `scan-to-approval-note` (a SKILL.md, embedded — not registered)
+
+TrueForge skills are git repositories cloned into the sandbox, and the API's `SkillManifest.url`
+is regex-locked to `https://github.com/…` or `https://gitlab.com/…`. A local repo or `file://`
+path is rejected outright, and the clone happens at runtime from that URL. **Offline, the skill
+mechanism cannot work.**
+
+So `sovereign/skills/scan-to-approval-note/SKILL.md` stays the single source of the procedure,
+and `dispatcher/agents.py` strips its frontmatter and appends the body to the Doc Agent's
+`instructions` under a "Procedure" heading. Same content, no sandbox, no clone, no GitHub. If the
+project ever runs online, pushing that directory to GitHub and registering it restores
+progressive disclosure with zero rewrite.
 
 It carries what the writer model is most likely to get wrong: the approval-note structure,
 mandatory fields (asset ID, inspector, date, findings, risk rating, corrective actions,
@@ -285,7 +295,7 @@ the cable.
       │  context: "SOP-114 …"
       │  STAGE B (write)
       ▼
-     DA ──loads skill scan-to-approval-note──▶ SB
+     DA  (procedure already in its instructions)
      DA ──drafts note──▶ OL
      DA ──generate_docx(...)──▶ T ──▶ output/approval-note-V102.docx
       │
@@ -377,14 +387,12 @@ npx @truefoundry/trueforge@latest                  # log must say: Local sandbox
 
 Then in TrueForge at `http://localhost:8790`:
 
-1. Settings → Models → **custom** provider `ollama`, base URL `http://<laptop-a>:11434/v1`,
-   models `vision-model` and `doc-model`.
-2. Settings → Connectors → add `sovereign-tools` at `http://127.0.0.1:9000/mcp`.
-3. Settings → Skills → add the local repo path for `scan-to-approval-note`.
-4. Create both agents per §4.3.
-5. **Warm the sandbox**: send the Doc Agent "run a python script that prints 2+2". Then
-   `pip install openpyxl pandas` inside it.
-6. Verify from B: `curl http://<laptop-a>:11434/v1/models`.
+1. `sovereign/.venv/bin/python -m scripts.register --ollama http://<laptop-a>:11434` — registers
+   the `custom` provider `ollama` (models `vision-model`, `doc-model`), the `sovereign-tools` MCP
+   server at `http://127.0.0.1:9000/mcp`, and both agents per §4.3. Idempotent; re-run after edits.
+2. **Warm the sandbox**: in the bundled UI pick `doc-agent`, send "run a python script that prints
+   2+2", then "pip install openpyxl pandas".
+3. Verify from B: `curl http://<laptop-a>:11434/v1/models`.
 
 ### Unplug, then
 
@@ -415,7 +423,7 @@ Then in TrueForge at `http://localhost:8790`:
 | Vision model tool calls degrade once an image is in context | High | Two-stage chain is primary; vision-side tools are fallback only. Test image + tool in one turn early. |
 | Harness defaults (subagents, gen-UI, questions) bloat a small model's prompt | High | All three off on both agents. |
 | Default approval gating pauses `generate_docx` | Medium | `require_approval_for_tools: []` or read-only annotations. |
-| Skills need a git repo *and* a sandbox | Medium | Local repo; sandbox on Doc Agent; verify offline clone. |
+| Skill URLs must be github.com/gitlab.com — unusable offline | Resolved | SKILL.md body embedded in Doc Agent instructions by `agents.py`. |
 | Scanned PDFs rejected by Ollama as `file` parts | Medium | Dispatcher rasterizes to PNG. Keep a PNG sample as the primary demo input. |
 | Ollama default context truncates prompts | Medium | Modelfiles with `num_ctx` (§2). |
 | Two-laptop link fails | Medium | Direct cable; tested single-laptop fallback with both models on B. |

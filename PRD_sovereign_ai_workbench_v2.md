@@ -20,7 +20,7 @@ Reading and creating documents — scans, photos, spreadsheets, Word files — i
 - **Context-window compaction** — automatically summarizes older turns as context fills up, model-aware
 - **Sandbox-as-a-tool** — isolated code execution, provisioned on demand. In local mode this is a **host-local sandbox** built on Anthropic's `sandbox-runtime` (bubblewrap), *not* the cloud Daytona provider the docs describe. On Linux it needs `bwrap`, `socat`, and `rg` on the host.
 - **MCP tool integration** — the standard way to plug in new capabilities. **Transport is remote HTTP only** (Streamable HTTP, or legacy SSE) — no stdio, so our tool server is an HTTP service.
-- **Skills** — `SKILL.md` instruction packs loaded on demand. A skill is a **git repository** cloned into the sandbox, so skills require the sandbox to be enabled.
+- **Skills** — `SKILL.md` instruction packs loaded on demand. A skill is a **git repository** cloned into the sandbox at runtime, and the API only accepts `github.com` / `gitlab.com` URLs — so **skills are unusable offline** (see §3, Procedure).
 - **Bundled chat UI + HTTP API + TypeScript SDK**
 - **Multimodal turn input** — user messages accept file parts as `data:` URIs; `image/*` is forwarded inline to the model as `image_url`
 
@@ -58,7 +58,7 @@ Reading and creating documents — scans, photos, spreadsheets, Word files — i
   | Setting | Vision Agent | Doc Agent | Why |
   | --- | --- | --- | --- |
   | MCP servers | `sovereign-tools` (fallback) | `sovereign-tools` | Doc Agent drives the tools |
-  | skills | none | `scan-to-approval-note` | procedure only matters where tools are called |
+  | skills | none | none — procedure embedded in `instructions` | skill URLs must be GitHub/GitLab; unusable offline |
   | `config.sandbox.enabled` | `false` | `true` | skills + Flow 6 need it |
   | `dynamic_sub_agents`, `generative_ui`, `ask_user_questions` | `false` | `false` | on by default; each appends prompt + schema weight a 7–8B model can't afford; a paused question looks like a hang |
   | `mcp_servers[].preload` | — | `true` | three tools; skip discovery |
@@ -78,8 +78,8 @@ Reading and creating documents — scans, photos, spreadsheets, Word files — i
   - `generate_docx(title, sections, template=None) -> path` — `python-docx`, writes to `output/` on the host (not inside the sandbox)
   - (stretch) `generate_xlsx(rows) -> path` — `openpyxl`
   - Tools are annotated read-only or approval is disabled per server so nothing pauses.
-- **Skill** `scan-to-approval-note` — on the Doc Agent only. Carries the approval-note structure, mandatory fields (asset ID, inspector, date, findings, risk rating, corrective actions, sign-off), and formal tone — exactly what the writer model is most likely to get wrong. Lives in a **local git repo on Laptop B**; the sandbox clones it from there, never from GitHub.
-- **Sandbox** — TrueForge's local sandbox, on the Doc Agent only, for exactly two jobs: Flow 6 code execution, and hosting the skill. Not used for reading uploads. First init pip-installs `pydantic` from PyPI, so it is **warmed up while still online** (§8).
+- **Procedure `scan-to-approval-note`** — written as a `SKILL.md` (structure, mandatory fields, risk rating rules, formal tone — exactly what the writer model is most likely to get wrong) but **not registered as a TrueForge skill**: the API's skill URL is regex-locked to GitHub/GitLab and the sandbox clones it at runtime, which cannot happen offline. `dispatcher/agents.py` strips the frontmatter and embeds the body in the Doc Agent's `instructions`. Same content, zero infrastructure; pushing the directory to GitHub later restores the real skill mechanism unchanged.
+- **Sandbox** — TrueForge's local sandbox, on the Doc Agent only, for exactly one job: Flow 6 code execution. Not used for reading uploads, not needed for the procedure. First init pip-installs `pydantic` from PyPI, so it is **warmed up while still online** (§8).
 - **Multi-turn / follow-ups** — TrueForge's session and compaction handling; no custom state code.
 
 ## 4. Must-Build Flows
@@ -140,7 +140,7 @@ Follow-up turn in the same session ("make the tone more formal," "add a correcti
 - **Custom pieces we write** (all under a top-level `sovereign/` directory, outside the pnpm workspace):
   - Dispatcher — file normalization, classification, context lookup, Vision→Doc chaining, inline-spec session calls via the TrueForge SDK, thin upload/chat page, routing banner
   - MCP tool server over **HTTP** (FastMCP `streamable-http`): `extract_from_scan`, `generate_docx`, (stretch) `generate_xlsx`
-  - One `SKILL.md` (`scan-to-approval-note`) in a local git repo
+  - One `SKILL.md` (`scan-to-approval-note`), embedded into the Doc Agent prompt at registration
   - `context/` — a handful of sample SOP/manual files for keyword lookup
 - **File conversion (dispatcher):** `pdf2image`/`pypdfium2` + `poppler-utils` (PDF → PNG), `pypdf` (digital PDF text), `openpyxl` (xlsx), `python-docx` (docx read and write)
 - **OCR:** `pytesseract` + `tesseract-ocr`
@@ -151,15 +151,15 @@ Follow-up turn in the same session ("make the tone more formal," "add a correcti
 ## 8. Build Order (fits 5-hour window)
 
 **Laptop A — while online**
-1. Ollama with `OLLAMA_HOST=0.0.0.0:11434`, `KEEP_ALIVE=-1`, `MAX_LOADED_MODELS=2`; pull both models; create `vision-model` / `doc-model` from Modelfiles; `ollama show` both and confirm `vision`/`tools` capabilities. Confirm image input works over `/v1` from Laptop B (`curl http://<A>:11434/v1/models` first). — 30 min
+ 1. Ollama with `OLLAMA_HOST=0.0.0.0:11434`, `KEEP_ALIVE=-1`, `MAX_LOADED_MODELS=2`; pull both models; create `vision-model` / `doc-model` from Modelfiles; `ollama show` both and confirm `vision`/`tools` capabilities. Confirm image input works over `/v1` from Laptop B (`curl http://<A>:11434/v1/models` first). — 30 min
 
 **Laptop B — while online**
 2. `apt install bubblewrap socat ripgrep tesseract-ocr poppler-utils`; `bwrap --dev-bind / / true` must succeed; Node 22; `npx @truefoundry/trueforge@latest` and confirm the log line `Local sandbox fallback is available`. — 20 min
-3. In TrueForge: register Ollama as `custom` provider; define both agents per the §3 table (sandbox on Doc only, capabilities off, preload on, approval off). — 20 min
-4. Build the MCP tool server (`extract_from_scan`, `generate_docx`) as an HTTP MCP service; register as `sovereign-tools`; attach to both agents. — 75 min
-5. Write `SKILL.md` in the local git repo; register and attach to the Doc Agent. — 20 min
-6. **Warm the sandbox**: send the Doc Agent "run a python script that prints 2+2"; then `pip install openpyxl pandas` inside it. Verify the skill clones offline (disconnect briefly and re-trigger). — 15 min
-7. Build the dispatcher: normalization → classification → context → chain → inline-spec session calls → thin page + banner. — 60 min
+3. Start the MCP tool server and the dispatcher (`sovereign/scripts/run_mcp.sh`, `run_dispatcher.sh`); run `scripts/register.py --ollama http://<A>:11434` — registers the `custom` provider, `sovereign-tools`, and both agents per the §3 table (sandbox on Doc only, capabilities off, preload on, approval off, procedure embedded). Idempotent. — 10 min
+4. **Warm the sandbox**: in the bundled UI pick `doc-agent`, send "run a python script that prints 2+2", then `pip install openpyxl pandas`. — 15 min
+5. Smoke Flow 1 and Flow 2 through the dispatcher page with `samples/`. Fix prompt wording per model. — 30 min
+6. Iterate the Doc Agent prompt / SKILL.md until Flow 3 produces a `.docx` that reads right. — 45 min
+7. Tune normalization caps and the routing banner against real demo inputs. — 20 min
 8. Wire and test Flows 1 → 2 → 3 end-to-end. — 30 min
 9. Error handling (Flow 5) + banner polish (Flow 4). — 15 min
 10. Flow 6 through the sandbox; Flow 7 multi-turn. — 20 min
@@ -185,7 +185,7 @@ Follow-up turn in the same session ("make the tone more formal," "add a correcti
 - **Vision-side tool calls may degrade once an image is in context.** The two-stage chain is primary and vision-side tools are fallback only. Test one image plus one tool call in a single turn early.
 - **Harness defaults bloat a small model's prompt.** Subagents, generative UI, and clarifying questions are on by default and each adds guidance plus tool schemas. All three off on both agents.
 - **Default approval gating pauses `generate_docx`** behind an Allow/Deny prompt. Set `require_approval_for_tools: []` or annotate read-only.
-- **Skills need a git repo and a sandbox.** The skill is cloned, not read from disk; the agent must have `config.sandbox.enabled: true`. Test the offline clone explicitly.
+- **Skills are unusable offline** (GitHub/GitLab-only URLs, cloned at runtime). Resolved by embedding the `SKILL.md` body in the Doc Agent's instructions; the sandbox is now Flow 6 only.
 - **Scanned PDFs are rejected by Ollama** — TrueForge sends them as an OpenAI `file` part. Dispatcher rasterizes to PNG; keep a PNG sample as the primary demo input regardless.
 - **Ollama's default context window truncates prompts** silently. Modelfiles with `num_ctx` are mandatory, not optional.
 - **Two-laptop link is a single point of failure** — direct cable plus a tested single-laptop fallback with both models on Laptop B.
