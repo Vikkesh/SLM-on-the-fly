@@ -15,18 +15,22 @@ output/         generated .docx / .xlsx land here            (gitignored)
 uploads/        normalized PNGs, readable by extract_from_scan (gitignored)
 ```
 
-## Run (Laptop B) — one command
+## Run (Laptop B) — two commands
 
 ```bash
-scripts/run_all.sh start --ollama http://<model-laptop>:11434     # detects the model, starts everything, registers, prints tests
+# on a good internet connection (no model server needed): node 22, venv, a local copy of TrueForge, samples
+scripts/run_all.sh prepare
+
+# on the network that reaches the model server (no internet needed)
+scripts/run_all.sh start --ollama http://<model-laptop>:11434 --model qwen3:8b --vision-model qwen2.5vl:7b
+
 scripts/run_all.sh status
 scripts/run_all.sh stop
 ```
 
-With a single text-only model on the server, images are read with local Tesseract OCR and the
-banner says so (`OCR (tesseract) -> Doc Agent`); with a vision-capable model the Vision Agent is
-used. Pass `--model TAG` if the server has several models, `--vision-model TAG` to split them.
-Logs land in `logs/`.
+`--model` is the writer (Doc Agent), `--vision-model` the reader (Vision Agent). With one
+text-only model on the server, images are read with local Tesseract OCR and the banner says so
+(`OCR (tesseract) -> Doc Agent`). Logs land in `logs/`; TrueForge lives in `.trueforge/`.
 
 ## Run by hand
 

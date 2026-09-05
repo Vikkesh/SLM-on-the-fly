@@ -47,6 +47,7 @@ sovereign/.venv/
 sovereign/output/
 sovereign/uploads/
 sovereign/logs/
+sovereign/.trueforge/
 
 # Python bytecode (sovereign/)
 __pycache__/
