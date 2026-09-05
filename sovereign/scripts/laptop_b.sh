@@ -3,7 +3,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 OLLAMA_URL="${1:-}"
-[[ -z "$OLLAMA_URL" ]] && { echo "usage: $0 http://<laptop-a-ip>:11434"; exit 1; }
+[[ -z "$OLLAMA_URL" ]] && { echo "usage: $0 http://10.79.58.149:11434/v1"; exit 1; }
 
 echo ">> 1. system packages (asks for sudo)"
 sudo apt-get install -y bubblewrap tesseract-ocr        # sandbox isolation, OCR

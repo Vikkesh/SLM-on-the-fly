@@ -46,6 +46,7 @@ CLAUDE.local.md
 sovereign/.venv/
 sovereign/output/
 sovereign/uploads/
+sovereign/logs/
 
 # Python bytecode (sovereign/)
 __pycache__/

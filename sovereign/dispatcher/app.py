@@ -9,7 +9,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config
+from . import config, vision
 from .normalize import UnsupportedFile
 from .pipeline import Dispatcher
 from .trueforge import TrueForgeError, ollama_reachable
@@ -32,6 +32,7 @@ def health() -> dict:
         "trueforge": dispatcher.tf.healthy(),
         "ollama": ollama_reachable(),
         "models": {"vision": config.VISION_MODEL_LABEL, "doc": config.DOC_MODEL_LABEL},
+        "vision_mode": vision.mode(),
     }
 
 

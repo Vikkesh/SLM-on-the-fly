@@ -70,12 +70,13 @@ async function health() {
     const h = await (await fetch("/api/health")).json();
     $("#p-tf").className = "pill " + (h.trueforge ? "ok" : "bad");
     $("#p-ol").className = "pill " + (h.ollama ? "ok" : "bad");
-    $("#p-ol").textContent = "Model server" + (h.ollama ? " · " + h.models.vision + " / " + h.models.doc : " · unreachable");
+    const models = h.models.vision === h.models.doc ? h.models.doc : h.models.vision + " / " + h.models.doc;
+    $("#p-ol").textContent = "Model server" + (h.ollama ? " · " + models + (h.vision_mode === "ocr" ? " · images via OCR" : "") : " · unreachable");
   } catch { $("#p-tf").className = $("#p-ol").className = "pill bad"; }
 }
 health(); setInterval(health, 8000);
 
-function hopClass(agent) { return agent.toLowerCase().startsWith("vision") ? "vision" : "doc"; }
+function hopClass(agent) { const a = agent.toLowerCase(); return a.startsWith("vision") || a.startsWith("ocr") ? "vision" : "doc"; }
 
 function render(prompt, fileNames, data, isError) {
   const el = document.createElement("section"); el.className = "turn";

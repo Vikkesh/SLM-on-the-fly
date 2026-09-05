@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from . import agents, config, context
+from . import agents, config, context, vision
 from .classify import Route, classify
 from .normalize import ImagePart, Part, TextPart, normalize
 from .trueforge import TrueForgeClient, image_part, text_part
@@ -57,16 +57,30 @@ class Dispatcher:
             parts.extend(got)
             trace.append(f"normalized {name} -> " + ", ".join(_kind(p) for p in got))
 
-        route: Route = classify(prompt, parts)
-        trace.append(f"route: {' -> '.join(route.stages)} ({route.reason})")
-
-        images = [p for p in parts if isinstance(p, ImagePart)]
-        texts = [p for p in parts if isinstance(p, TextPart)]
         before = _snapshot()
         hops: list[Hop] = []
         extracted: str | None = None
         answer = ""
         ctx_docs: list[str] = []
+
+        # Text-only model: read images locally with Tesseract and continue as a text request.
+        if vision.mode() == "ocr" and any(isinstance(p, ImagePart) for p in parts):
+            t0 = time.time()
+            ocr_parts: list[Part] = []
+            for p in parts:
+                if isinstance(p, ImagePart):
+                    ocr_parts.append(TextPart(f"{p.label} (OCR)", vision.ocr(p.png)))
+                else:
+                    ocr_parts.append(p)
+            parts = ocr_parts
+            hops.append(Hop("OCR (tesseract)", "local", [], round(time.time() - t0, 1)))
+            trace.append(f"vision model unavailable ({config.VISION_MODEL_ID} has no vision capability): images OCR'd locally")
+
+        route: Route = classify(prompt, parts)
+        trace.append(f"route: {' -> '.join(route.stages)} ({route.reason})")
+
+        images = [p for p in parts if isinstance(p, ImagePart)]
+        texts = [p for p in parts if isinstance(p, TextPart)]
 
         if "vision" in route.stages:
             extracted, hop = self._vision(client_id, prompt, images, texts, chained="doc" in route.stages)

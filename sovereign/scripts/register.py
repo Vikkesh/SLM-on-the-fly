@@ -22,8 +22,8 @@ def main() -> int:
     ap.add_argument("--trueforge", default=config.TRUEFORGE_URL)
     ap.add_argument("--ollama", default=config.OLLAMA_URL, help="Laptop A base URL, e.g. http://192.168.10.2:11434")
     ap.add_argument("--mcp", default=config.MCP_SERVER_URL)
-    ap.add_argument("--vision-id", default=config.VISION_MODEL_ALIAS, help="Ollama tag/alias for the reader")
-    ap.add_argument("--doc-id", default=config.DOC_MODEL_ALIAS, help="Ollama tag/alias for the writer")
+    ap.add_argument("--vision-id", default=config.VISION_MODEL_ID, help="Ollama tag for the reader")
+    ap.add_argument("--doc-id", default=config.DOC_MODEL_ID, help="Ollama tag for the writer")
     args = ap.parse_args()
 
     headers = {"Authorization": f"Bearer {config.TRUEFORGE_TOKEN}"} if config.TRUEFORGE_TOKEN else {}

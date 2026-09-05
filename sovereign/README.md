@@ -15,7 +15,20 @@ output/         generated .docx / .xlsx land here            (gitignored)
 uploads/        normalized PNGs, readable by extract_from_scan (gitignored)
 ```
 
-## Run (Laptop B)
+## Run (Laptop B) — one command
+
+```bash
+scripts/run_all.sh start --ollama http://<model-laptop>:11434     # detects the model, starts everything, registers, prints tests
+scripts/run_all.sh status
+scripts/run_all.sh stop
+```
+
+With a single text-only model on the server, images are read with local Tesseract OCR and the
+banner says so (`OCR (tesseract) -> Doc Agent`); with a vision-capable model the Vision Agent is
+used. Pass `--model TAG` if the server has several models, `--vision-model TAG` to split them.
+Logs land in `logs/`.
+
+## Run by hand
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # once

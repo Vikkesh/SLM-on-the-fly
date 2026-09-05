@@ -28,9 +28,15 @@ VISION_MODEL_ALIAS = os.environ.get("VISION_MODEL_ALIAS", "vision-model")
 DOC_MODEL_ALIAS = os.environ.get("DOC_MODEL_ALIAS", "doc-model")
 VISION_MODEL_FQN = f"{PROVIDER_NAME}/{VISION_MODEL_ALIAS}"
 DOC_MODEL_FQN = f"{PROVIDER_NAME}/{DOC_MODEL_ALIAS}"
+# Ollama tags behind the aliases (what register.py sends as model_id). With a single model, both are the same tag.
+VISION_MODEL_ID = os.environ.get("VISION_MODEL_ID", "qwen2.5vl:7b")
+DOC_MODEL_ID = os.environ.get("DOC_MODEL_ID", "qwen3:8b")
 # Human-readable names shown in the "Routed to" banner.
-VISION_MODEL_LABEL = os.environ.get("VISION_MODEL_LABEL", "qwen2.5vl:7b")
-DOC_MODEL_LABEL = os.environ.get("DOC_MODEL_LABEL", "qwen3:8b")
+VISION_MODEL_LABEL = os.environ.get("VISION_MODEL_LABEL", VISION_MODEL_ID)
+DOC_MODEL_LABEL = os.environ.get("DOC_MODEL_LABEL", DOC_MODEL_ID)
+# How images are read: "auto" asks Ollama whether VISION_MODEL_ID has the vision capability and
+# falls back to local Tesseract OCR when it does not; "model" / "ocr" force one.
+VISION_MODE = os.environ.get("VISION_MODE", "auto")
 
 MCP_SERVER_NAME = os.environ.get("MCP_SERVER_NAME", "sovereign-tools")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://127.0.0.1:9000/mcp")
