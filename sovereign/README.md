@@ -1,0 +1,60 @@
+# sovereign/ — the workbench layer on top of TrueForge
+
+Everything we wrote lives here. `packages/` (TrueForge) is untouched; we talk to it only through
+its HTTP API and MCP. Design: `../ARCHITECTURE_sovereign_ai_workbench.md`. Scope:
+`../PRD_sovereign_ai_workbench_v2.md`.
+
+```
+dispatcher/     router: normalize files -> classify -> context -> chain Vision->Doc -> banner   (:8080)
+mcp_server/     HTTP MCP tools: extract_from_scan (OCR), generate_docx, generate_xlsx           (:9000)
+skills/         scan-to-approval-note/SKILL.md  (embedded into the Doc Agent's instructions)
+context/        sample SOP / manual excerpts used for keyword context lookup
+samples/        synthetic scan + spreadsheet for testing  (make with scripts/make_sample.py)
+scripts/        laptop_a.sh, laptop_b.sh, register.py, Modelfiles, runners
+output/         generated .docx / .xlsx land here            (gitignored)
+uploads/        normalized PNGs, readable by extract_from_scan (gitignored)
+```
+
+## Run (Laptop B)
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # once
+.venv/bin/python -m scripts.make_sample                              # optional test inputs
+
+# three terminals
+npx @truefoundry/trueforge@latest                 # TrueForge, standalone, :8790
+scripts/run_mcp.sh                                # tools, :9000
+OLLAMA_URL=http://<laptop-a>:11434 scripts/run_dispatcher.sh   # :8080  -> open http://127.0.0.1:8080
+
+# once TrueForge is up (idempotent):
+.venv/bin/python -m scripts.register --ollama http://<laptop-a>:11434
+```
+
+`scripts/laptop_a.sh` prepares the model server; `scripts/laptop_b.sh <ollama-url>` walks the
+orchestrator prep, including the sandbox warm-up that must happen **before unplugging**.
+
+## How a request moves
+
+1. `dispatcher/normalize.py` turns every upload into text or PNG (PDF → PNG if scanned, else text;
+   xlsx/csv → markdown table; docx → text). The models never see a file.
+2. `dispatcher/classify.py` picks the route by file type + intent words. Deterministic.
+3. `dispatcher/context.py` keyword-matches `context/*.md` and returns a short excerpt.
+4. `dispatcher/pipeline.py` runs the stages: Vision Agent reads → text carried into the Doc Agent,
+   which writes and calls `generate_docx`. Sessions are created with an **inline agent spec** so
+   the context lands in `instructions` (TrueForge has no prompt templating).
+5. `dispatcher/app.py` returns the answer, the "Routed to" banner, tool calls, and download links.
+
+## Environment knobs
+
+All in `dispatcher/config.py`; override by env var. The ones you will touch:
+`OLLAMA_URL`, `TRUEFORGE_URL`, `PROVIDER_NAME` (default `ollama`), `VISION_AGENT_TOOLS=1` to let
+the Vision Agent call tools (fallback path), `TURN_TIMEOUT_S`, `MAX_TABLE_ROWS`, `MAX_PDF_PAGES`.
+
+## Known constraints (verified against TrueForge's code)
+
+- Skills must come from `github.com`/`gitlab.com` — the API rejects other URLs. Offline, the
+  skill mechanism is unusable, so `SKILL.md` is embedded into the Doc Agent prompt by `agents.py`.
+- The local sandbox needs `bwrap`, `socat`, `rg` and a one-time online init (pip-installs pydantic).
+  It is only used for Flow 6 (run code). File reading never goes through it.
+- MCP tools default to approval gating on write tools; `agents.py` sets
+  `require_approval_for_tools: []` so `generate_docx` never pauses the demo.
