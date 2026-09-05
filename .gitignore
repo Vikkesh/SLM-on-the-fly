@@ -41,3 +41,12 @@ service-account*.json
 
 # Fork-local Claude Code instructions (upstream CLAUDE.md/AGENTS.md stay tracked)
 CLAUDE.local.md
+
+# Sovereign workbench (ours): venv, generated documents, uploaded scans
+sovereign/.venv/
+sovereign/output/
+sovereign/uploads/
+
+# Python bytecode (sovereign/)
+__pycache__/
+*.pyc
