@@ -3,117 +3,405 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sovereign AI Workbench</title>
+<title>Sovereign Workbench</title>
 <style>
-  :root { --bg:#0f1419; --panel:#161c24; --line:#273241; --fg:#e6edf3; --muted:#8b97a6;
-          --accent:#f5a524; --ok:#2ecc71; --bad:#e74c3c; --vision:#5dade2; --doc:#f5a524; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
-  header { display:flex; align-items:center; gap:16px; padding:14px 24px; border-bottom:1px solid var(--line); }
-  header h1 { font-size:17px; margin:0; letter-spacing:.3px; }
-  header .sub { color:var(--muted); font-size:13px; }
-  .pills { margin-left:auto; display:flex; gap:8px; }
-  .pill { font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
-  .pill.ok { border-color:var(--ok); color:var(--ok); } .pill.bad { border-color:var(--bad); color:var(--bad); }
-  main { max-width:1080px; margin:0 auto; padding:20px 24px 80px; }
-  .composer { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
-  textarea { width:100%; min-height:88px; background:transparent; color:var(--fg); border:0; resize:vertical; font:inherit; outline:none; }
-  .row { display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap; }
-  input[type=file] { color:var(--muted); font-size:13px; }
-  button { background:var(--accent); color:#111; border:0; border-radius:8px; padding:9px 18px; font-weight:600; cursor:pointer; }
-  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
-  button:disabled { opacity:.5; cursor:wait; }
-  .turn { margin-top:22px; }
-  .user { color:var(--muted); font-size:13px; margin-bottom:6px; white-space:pre-wrap; }
-  .banner { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; padding:6px 12px;
-            border-radius:8px; background:#1d2633; border:1px solid var(--line); margin-bottom:10px; }
-  .hop { padding:2px 8px; border-radius:6px; font-weight:600; }
-  .hop.vision { background:rgba(93,173,226,.15); color:var(--vision); }
-  .hop.doc { background:rgba(245,165,36,.15); color:var(--doc); }
-  .arrow { color:var(--muted); }
-  .answer { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; white-space:pre-wrap; }
-  .files a { display:inline-block; margin:8px 8px 0 0; padding:6px 12px; border-radius:8px; background:rgba(46,204,113,.12);
-             color:var(--ok); text-decoration:none; border:1px solid rgba(46,204,113,.4); font-size:13px; }
-  details { margin-top:8px; color:var(--muted); font-size:12.5px; }
-  details pre { white-space:pre-wrap; margin:6px 0 0; }
-  .error { border-color:var(--bad); color:#ffb4ad; }
-  .spinner { color:var(--muted); font-size:13px; margin-top:12px; }
+  /* Tokens. Paper and ink: this is a document tool for engineers who sign things. One signal
+     colour (permit-tag orange) is spent on the routing track and the send action only. */
+  :root {
+    --paper: #F3F5F4; --surface: #FFFFFF; --ink: #17202A; --muted: #5F6B78; --rule: #D8DEE3;
+    --rule-soft: #E9EDF0; --signal: #E8611A; --read: #0E7C86; --write: #2447C9; --local: #6B7280;
+    --file: #1F7A45; --danger: #B42318; --focus: #2447C9;
+    --font: "Segoe UI", Inter, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    --rail: 268px; --col: 780px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--font); }
+  button, input, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  a { color: inherit; }
+
+  /* Shell ---------------------------------------------------------------------------------- */
+  .shell { display: grid; grid-template-columns: var(--rail) 1fr; height: 100%; }
+  .rail { border-right: 1px solid var(--rule); background: var(--surface); padding: 22px 20px; display: flex; flex-direction: column; gap: 22px; overflow: auto; }
+  .brand h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+  .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .rail h2 { margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .status { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+  .status .row { display: flex; align-items: center; gap: 9px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); flex: none; }
+  .dot.ok { background: var(--file); } .dot.bad { background: var(--danger); }
+  .status .sub { color: var(--muted); font-size: 12.5px; margin-left: 17px; }
+  .legend { display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
+  .legend .row { display: grid; grid-template-columns: 14px 1fr; gap: 9px; align-items: start; }
+  .legend .swatch { width: 14px; height: 14px; border-radius: 3px; margin-top: 4px; }
+  .legend small { display: block; color: var(--muted); font-size: 12.5px; }
+  .rail .grow { flex: 1; }
+  .rail button.new { width: 100%; padding: 8px 12px; border: 1px solid var(--rule); background: var(--surface); border-radius: 8px; cursor: pointer; text-align: left; }
+  .rail button.new:hover { border-color: var(--ink); }
+
+  .main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+  .scroll { flex: 1; overflow: auto; padding: 36px 28px 20px; }
+  .col { max-width: var(--col); margin: 0 auto; }
+
+  /* Empty state ---------------------------------------------------------------------------- */
+  .empty h2 { font-size: 26px; font-weight: 600; letter-spacing: -.015em; margin: 8px 0 6px; }
+  .empty p { color: var(--muted); margin: 0 0 22px; max-width: 58ch; }
+  .starters { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .starters button { text-align: left; padding: 14px 15px; border: 1px solid var(--rule); background: var(--surface); border-radius: 10px; cursor: pointer; line-height: 1.4; }
+  .starters button:hover { border-color: var(--ink); }
+  .starters b { display: block; font-weight: 600; margin-bottom: 3px; }
+  .starters span { color: var(--muted); font-size: 13px; }
+
+  /* Turns ---------------------------------------------------------------------------------- */
+  .turn { margin-bottom: 34px; }
+  .you { border-left: 3px solid var(--rule); padding: 2px 0 2px 14px; margin-bottom: 14px; white-space: pre-wrap; }
+  .you .chips { margin-top: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); margin: 0 6px 6px 0; }
+  .chip .x { border: 0; background: none; cursor: pointer; padding: 0 2px; color: var(--muted); font-size: 15px; line-height: 1; }
+
+  /* The routing track: the one deliberately loud element on the page. */
+  .track { display: flex; align-items: center; gap: 0; margin: 0 0 14px; flex-wrap: wrap; row-gap: 8px; }
+  .node { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 12px 6px 10px; border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); font-size: 13.5px; position: relative; }
+  .node::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; }
+  .node.read::before { background: var(--read); } .node.write::before { background: var(--write); } .node.local::before { background: var(--local); }
+  .node.pending { color: var(--muted); } .node.pending::before { background: var(--rule); }
+  .node.active { border-color: var(--signal); box-shadow: 0 0 0 3px rgba(232, 97, 26, .14); }
+  .node.active::before { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(.55); opacity: .55; } }
+  .node b { font-weight: 600; } .node .model { color: var(--muted); font-size: 12.5px; }
+  .node .t { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .node .tool { color: var(--signal); font-size: 12.5px; }
+  .link { width: 22px; height: 2px; background: var(--rule); flex: none; }
+  .link.done { background: var(--signal); }
+  .track .label { color: var(--muted); font-size: 13px; margin-right: 10px; }
+
+  .answer { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 18px 22px; overflow-wrap: anywhere; }
+  .answer :first-child { margin-top: 0; } .answer :last-child { margin-bottom: 0; }
+  .answer p { margin: 0 0 12px; } .answer ul, .answer ol { margin: 0 0 12px; padding-left: 22px; }
+  .answer h3, .answer h4 { font-size: 15px; margin: 16px 0 6px; font-weight: 650; }
+  .answer code { font: 13px/1.4 var(--mono); background: var(--rule-soft); padding: 1px 5px; border-radius: 4px; }
+  .answer pre { background: var(--rule-soft); padding: 12px 14px; border-radius: 8px; overflow: auto; font: 13px/1.5 var(--mono); }
+  .answer pre code { background: none; padding: 0; }
+  .answer table { border-collapse: collapse; margin: 6px 0 12px; font-size: 14px; width: 100%; }
+  .answer th, .answer td { border: 1px solid var(--rule); padding: 5px 9px; text-align: left; vertical-align: top; }
+  .answer th { background: var(--rule-soft); font-weight: 600; }
+  .answer .caret { display: inline-block; width: 2px; height: 1em; background: var(--ink); vertical-align: -2px; margin-left: 1px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .answer .reading { color: var(--muted); font-style: italic; }
+  .answer.error { border-color: var(--danger); color: #7A1610; background: #FFF5F4; }
+  .answer.error .fix { color: var(--ink); font-style: normal; margin-top: 8px; }
+
+  .files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .files a { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 8px 12px; border-radius: 9px; border: 1px solid #BFE0CB; background: #F0FAF3; color: var(--file); font-weight: 600; font-size: 13.5px; }
+  .files a:hover { border-color: var(--file); }
+  .files .ext { font: 600 11px/1 var(--mono); padding: 3px 5px; border-radius: 4px; background: var(--file); color: #fff; }
+
+  details.how { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  details.how summary { cursor: pointer; }
+  details.how .grid { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 8px 0 0; }
+  details.how .grid b { font-weight: 600; color: var(--ink); }
+  details.how pre { font: 12px/1.5 var(--mono); white-space: pre-wrap; margin: 8px 0 0; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; }
+  details.how .extract { max-height: 260px; overflow: auto; }
+
+  /* Composer ------------------------------------------------------------------------------- */
+  .dock { padding: 10px 28px 22px; background: linear-gradient(to bottom, rgba(243,245,244,0), var(--paper) 30%); }
+  .composer { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 12px 12px 10px; box-shadow: 0 6px 24px rgba(23, 32, 42, .06); }
+  .composer.drag { border-color: var(--signal); }
+  .composer textarea { width: 100%; border: 0; resize: none; min-height: 52px; max-height: 240px; padding: 4px 6px; outline: none; background: transparent; line-height: 1.5; }
+  .composer .bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .composer .attach { border: 1px solid var(--rule); background: var(--surface); border-radius: 8px; padding: 7px 11px; cursor: pointer; font-size: 13.5px; }
+  .composer .attach:hover { border-color: var(--ink); }
+  .composer .hint { color: var(--muted); font-size: 12.5px; flex: 1; }
+  .composer .send { border: 0; border-radius: 9px; padding: 9px 18px; background: var(--signal); color: #fff; font-weight: 600; cursor: pointer; }
+  .composer .send:hover { filter: brightness(.95); }
+  .composer .send[disabled] { background: var(--rule); color: var(--muted); cursor: not-allowed; }
+  .composer .pending { padding: 0 6px; }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .rail { border-right: 0; border-bottom: 1px solid var(--rule); flex-direction: row; flex-wrap: wrap; gap: 18px; padding: 14px 18px; }
+    .rail .grow, .legend { display: none; }
+    .scroll, .dock { padding-left: 16px; padding-right: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .node.active::before, .answer .caret { animation: none; } }
 </style>
 </head>
 <body>
-<header>
-  <div><h1>Sovereign AI Workbench</h1><div class="sub">on-premise · air-gapped · two local models</div></div>
-  <div class="pills">
-    <span id="p-tf" class="pill">TrueForge</span>
-    <span id="p-ol" class="pill">Model server</span>
-  </div>
-</header>
-<main>
-  <div class="composer">
-    <textarea id="prompt" placeholder="Ask a question, or attach a scan / spreadsheet / PDF and say what you need…"></textarea>
-    <div class="row">
-      <input id="files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.pdf,.xlsx,.csv,.docx,.txt,.md">
-      <span style="flex:1"></span>
-      <button id="new" class="ghost" type="button">New session</button>
-      <button id="send" type="button">Send</button>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">
+      <h1>Sovereign Workbench</h1>
+      <p>Reads scans and spreadsheets, writes approval documents. Runs entirely on this network.</p>
     </div>
-  </div>
-  <div id="log"></div>
-</main>
+    <section>
+      <h2>System</h2>
+      <div class="status" id="status">
+        <div class="row"><span class="dot" id="d-tf"></span>Agent engine</div>
+        <div class="row"><span class="dot" id="d-ol"></span>Model server</div>
+        <div class="sub" id="s-models">checking…</div>
+        <div class="row"><span class="dot" id="d-tools"></span>Document tools</div>
+      </div>
+    </section>
+    <section>
+      <h2>How requests are routed</h2>
+      <div class="legend">
+        <div class="row"><span class="swatch" style="background:var(--read)"></span><div>Reader <small id="l-read">scans, photos, PDFs</small></div></div>
+        <div class="row"><span class="swatch" style="background:var(--write)"></span><div>Writer <small id="l-write">questions, documents, spreadsheets</small></div></div>
+        <div class="row"><span class="swatch" style="background:var(--signal)"></span><div>Tools <small>Word, PDF, Excel, OCR</small></div></div>
+      </div>
+    </section>
+    <div class="grow"></div>
+    <button class="new" id="new" type="button">Start a new session</button>
+  </aside>
+
+  <main class="main">
+    <div class="scroll" id="scroll">
+      <div class="col" id="log">
+        <div class="empty" id="empty">
+          <h2>What do you need?</h2>
+          <p>Ask a question, or attach an inspection scan, a photo, a PDF or a spreadsheet and say what to produce. Follow-ups stay in the same session.</p>
+          <div class="starters">
+            <button type="button" data-prompt="What is the maximum allowable pressure for V-102, and what happens if it is exceeded?"><b>Ask about an SOP</b><span>Answered from the company documents on this machine.</span></button>
+            <button type="button" data-prompt="Draft the approval note for this inspection report as a Word document." data-sample="inspection-report-V102.png"><b>Scan → approval note</b><span>Attaches the sample inspection scan and writes the .docx.</span></button>
+            <button type="button" data-prompt="Summarise these readings against the pump limits and flag anything that needs action." data-sample="p301-readings.xlsx"><b>Check a spreadsheet</b><span>Attaches the sample readings sheet.</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dock">
+      <div class="col">
+        <form class="composer" id="composer">
+          <textarea id="prompt" rows="2" placeholder="Ask a question, or describe the document you need…" aria-label="Your request"></textarea>
+          <div class="pending" id="pending"></div>
+          <div class="bar">
+            <label class="attach" for="files">Attach files</label>
+            <input id="files" type="file" multiple hidden accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.pdf,.xlsx,.csv,.docx,.txt,.md">
+            <span class="hint">Enter to send · Shift+Enter for a new line · drop files anywhere</span>
+            <button class="send" id="send" type="submit">Send</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+</div>
+
 <script>
-const $ = s => document.querySelector(s);
-let clientSession = "";
-const modelOf = {};
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const state = { session: "", files: [], busy: false, models: {}, last: null };
 
-async function health() {
-  try {
-    const h = await (await fetch("/api/health")).json();
-    $("#p-tf").className = "pill " + (h.trueforge ? "ok" : "bad");
-    $("#p-ol").className = "pill " + (h.ollama ? "ok" : "bad");
-    const models = h.models.vision === h.models.doc ? h.models.doc : h.models.vision + " / " + h.models.doc;
-    $("#p-ol").textContent = "Model server" + (h.ollama ? " · " + models + (h.vision_mode === "ocr" ? " · images via OCR" : "") : " · unreachable");
-  } catch { $("#p-tf").className = $("#p-ol").className = "pill bad"; }
-}
-health(); setInterval(health, 8000);
-
-function hopClass(agent) { const a = agent.toLowerCase(); return a.startsWith("vision") || a.startsWith("ocr") ? "vision" : "doc"; }
-
-function render(prompt, fileNames, data, isError) {
-  const el = document.createElement("section"); el.className = "turn";
-  const who = fileNames.length ? prompt + "\n[" + fileNames.join(", ") + "]" : prompt;
-  let html = `<div class="user">You: ${esc(who)}</div>`;
-  if (isError) {
-    html += `<div class="answer error">${esc(data.error || "Request failed")}</div>`;
-  } else {
-    const hops = data.routed.map(h => `<span class="hop ${hopClass(h.agent)}">${esc(h.agent)} (${esc(h.model)})</span>`).join(`<span class="arrow">→</span>`);
-    html += `<div class="banner">Routed to: ${hops}</div>`;
-    html += `<div class="answer">${esc(data.answer || "(no text)")}</div>`;
-    if (data.files.length) html += `<div class="files">` + data.files.map(f => `<a href="${f.url}" download>⬇ ${esc(f.name)}</a>`).join("") + `</div>`;
-    const tools = data.routed.flatMap(h => h.tool_calls.map(t => h.agent + " → " + t));
-    html += `<details><summary>Why this route · ${esc(data.route_reason)}${data.context_docs.length ? " · context: " + esc(data.context_docs.join(", ")) : ""}${tools.length ? " · tools: " + esc(tools.join(", ")) : ""}</summary><pre>${esc(data.trace.join("\n"))}${data.extracted && data.routed.length > 1 ? "\n\n--- Vision Agent extraction ---\n" + esc(data.extracted) : ""}</pre></details>`;
+  // ---- system status ---------------------------------------------------------------------
+  async function health() {
+    try {
+      const h = await (await fetch("/api/health")).json();
+      state.models = h.models;
+      $("#d-tf").className = "dot " + (h.trueforge ? "ok" : "bad");
+      $("#d-ol").className = "dot " + (h.ollama ? "ok" : "bad");
+      $("#d-tools").className = "dot ok";
+      const same = h.models.vision === h.models.doc;
+      $("#s-models").textContent = h.ollama
+        ? (same ? h.models.doc : `${h.models.vision} reads · ${h.models.doc} writes`) + (h.vision_mode === "ocr" ? " · images via OCR" : "")
+        : "model server unreachable";
+      $("#l-read").textContent = h.vision_mode === "ocr" ? "scans via local OCR" : "scans, photos, PDFs";
+    } catch {
+      $("#d-tf").className = $("#d-ol").className = $("#d-tools").className = "dot bad";
+      $("#s-models").textContent = "dispatcher unreachable";
+    }
   }
-  el.innerHTML = html; $("#log").prepend(el);
-}
-function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+  health(); setInterval(health, 10000);
 
-$("#send").onclick = async () => {
-  const prompt = $("#prompt").value.trim(); const files = [...$("#files").files];
-  if (!prompt && !files.length) return;
-  const fd = new FormData(); fd.append("prompt", prompt); fd.append("client_session", clientSession);
-  files.forEach(f => fd.append("files", f, f.name));
-  $("#send").disabled = true;
-  const wait = document.createElement("div"); wait.className = "spinner"; wait.textContent = "Routing…"; $("#log").prepend(wait);
-  try {
-    const r = await fetch("/api/ask", { method: "POST", body: fd });
-    const data = await r.json(); wait.remove();
-    if (data.client_session) clientSession = data.client_session;
-    render(prompt, files.map(f => f.name), data, !r.ok);
-    if (r.ok) { $("#prompt").value = ""; $("#files").value = ""; }
-  } catch (e) { wait.remove(); render(prompt, files.map(f => f.name), { error: "Dispatcher unreachable: " + e.message }, true); }
-  $("#send").disabled = false;
-};
-$("#new").onclick = () => { clientSession = ""; $("#log").innerHTML = ""; };
-$("#prompt").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("#send").click(); });
+  // ---- attachments -----------------------------------------------------------------------
+  function addFiles(list) {
+    for (const f of list) if (!state.files.some(x => x.name === f.name && x.size === f.size)) state.files.push(f);
+    renderPending();
+  }
+  function renderPending() {
+    $("#pending").innerHTML = state.files.map((f, i) =>
+      `<span class="chip">${esc(f.name)} <button class="x" type="button" data-i="${i}" aria-label="Remove ${esc(f.name)}">×</button></span>`).join("");
+  }
+  $("#pending").addEventListener("click", e => { const b = e.target.closest(".x"); if (!b) return; state.files.splice(+b.dataset.i, 1); renderPending(); });
+  $("#files").addEventListener("change", e => { addFiles(e.target.files); e.target.value = ""; });
+  const main = $(".main");
+  ["dragenter", "dragover"].forEach(ev => main.addEventListener(ev, e => { e.preventDefault(); $("#composer").classList.add("drag"); }));
+  ["dragleave", "drop"].forEach(ev => main.addEventListener(ev, e => { e.preventDefault(); $("#composer").classList.remove("drag"); }));
+  main.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+  document.addEventListener("paste", e => { const fs = [...e.clipboardData.files]; if (fs.length) addFiles(fs); });
+
+  async function attachSample(name) {
+    const r = await fetch("/samples/" + name); if (!r.ok) return;
+    addFiles([new File([await r.blob()], name)]);
+  }
+  $("#empty").addEventListener("click", async e => {
+    const b = e.target.closest("button[data-prompt]"); if (!b) return;
+    $("#prompt").value = b.dataset.prompt;
+    if (b.dataset.sample) await attachSample(b.dataset.sample);
+    $("#prompt").focus();
+  });
+
+  // ---- composer --------------------------------------------------------------------------
+  const ta = $("#prompt");
+  const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 240) + "px"; };
+  ta.addEventListener("input", grow);
+  ta.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); } });
+  $("#composer").addEventListener("submit", e => { e.preventDefault(); send(); });
+  $("#new").addEventListener("click", () => { state.session = ""; state.files = []; renderPending(); $("#log").innerHTML = ""; $("#log").appendChild($("#empty") ?? emptyNode()); ta.focus(); });
+  const emptyTemplate = $("#empty").cloneNode(true);
+  function emptyNode() { const n = emptyTemplate.cloneNode(true); return n; }
+
+  // ---- send + stream ---------------------------------------------------------------------
+  const kindOf = stage => stage === "doc" ? "write" : stage === "ocr" ? "local" : "read";
+  const nameOf = stage => stage === "doc" ? "Doc Agent" : stage === "ocr" ? "OCR" : "Vision Agent";
+
+  async function send(retry) {
+    const prompt = retry ? retry.prompt : ta.value.trim();
+    const files = retry ? retry.files : state.files.slice();
+    if (state.busy || (!prompt && !files.length)) return;
+    state.busy = true; $("#send").disabled = true;
+    state.last = { prompt, files };
+    if (!retry) { ta.value = ""; grow(); state.files = []; renderPending(); }
+    $("#empty")?.remove();
+
+    const turn = document.createElement("section"); turn.className = "turn";
+    turn.innerHTML = `
+      <div class="you">${esc(prompt || "(files only)")}${files.length ? `<div class="chips">${files.map(f => `<span class="chip">${esc(f.name)}</span>`).join("")}</div>` : ""}</div>
+      <div class="track"><span class="label">Routing…</span></div>
+      <div class="answer"><span class="reading">Preparing your files…</span></div>`;
+    $("#log").appendChild(turn);
+    const track = $(".track", turn), answer = $(".answer", turn);
+    const nodes = {}; let text = "", extracted = "", currentStage = "";
+    const scrollDown = () => { const s = $("#scroll"); s.scrollTop = s.scrollHeight; };
+    scrollDown();
+
+    const fd = new FormData();
+    fd.append("prompt", prompt); fd.append("client_session", state.session);
+    files.forEach(f => fd.append("files", f, f.name));
+
+    const onEvent = (ev, data) => {
+      if (ev === "session") { state.session = data.client_session; return; }
+      if (ev === "route") {
+        track.innerHTML = `<span class="label">Routed to</span>` + data.stages.map((st, i) => {
+          const model = st === "doc" ? state.models.doc : st === "vision" ? state.models.vision : "local";
+          return (i ? `<span class="link"></span>` : "") +
+            `<span class="node pending ${kindOf(st)}" data-stage="${st}"><b>${nameOf(st)}</b><span class="model">${esc(model)}</span><span class="t"></span></span>`;
+        }).join("");
+        data.stages.forEach(st => nodes[st] = $(`.node[data-stage="${st}"]`, track));
+        return;
+      }
+      if (ev === "stage") {
+        let n = nodes[data.stage];
+        if (!n && data.status === "start") {                       // OCR hop appears before route
+          track.innerHTML = `<span class="label">Routed to</span><span class="node pending local" data-stage="ocr"><b>OCR</b><span class="model">tesseract</span><span class="t"></span></span>`;
+          n = nodes.ocr = $(`.node[data-stage="ocr"]`, track);
+        }
+        if (!n) return;
+        if (data.status === "start") {
+          n.classList.remove("pending"); n.classList.add("active"); currentStage = data.stage;
+          if (data.stage === "vision") answer.innerHTML = `<span class="reading">Reading the document…</span>`;
+          if (data.stage === "doc" && extracted) { text = ""; answer.innerHTML = `<span class="reading">Writing…</span>`; }
+        } else {
+          n.classList.remove("active"); n.classList.add("done");
+          $(".t", n).textContent = data.seconds != null ? `${data.seconds}s` : "";
+          const link = n.previousElementSibling; if (link && link.classList.contains("link")) link.classList.add("done");
+          if (data.stage === "vision") { extracted = text; }
+        }
+        return;
+      }
+      if (ev === "delta") {
+        text += data.text;
+        answer.innerHTML = render(text) + `<span class="caret"></span>`;
+        scrollDown(); return;
+      }
+      if (ev === "tool") {
+        const n = nodes[data.stage]; if (!n) return;
+        let t = $(".tool", n); if (!t) { t = document.createElement("span"); t.className = "tool"; n.appendChild(t); }
+        t.textContent = data.status === "call" ? `${data.name}…` : `${data.name} ✓`;
+        return;
+      }
+      if (ev === "done") { finish(turn, answer, track, data); return; }
+      if (ev === "error") { fail(answer, track, data.error); return; }
+    };
+
+    try {
+      const r = await fetch("/api/ask/stream", { method: "POST", body: fd });
+      if (!r.ok || !r.body) { const d = await r.json().catch(() => ({})); fail(answer, track, d.detail || d.error || `Request failed (${r.status})`); }
+      else await readSSE(r.body, onEvent);
+    } catch (e) { fail(answer, track, "The workbench is not reachable: " + e.message); }
+    state.busy = false; $("#send").disabled = false; ta.focus();
+  }
+
+  async function readSSE(body, onEvent) {
+    const reader = body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        let ev = "message", data = "";
+        for (const line of chunk.split("\n")) { if (line.startsWith("event:")) ev = line.slice(6).trim(); else if (line.startsWith("data:")) data += line.slice(5).trim(); }
+        if (data) { try { onEvent(ev, JSON.parse(data)); } catch (e) { console.error(e); } }
+      }
+    }
+  }
+
+  function finish(turn, answer, track, d) {
+    answer.innerHTML = render(d.answer || "(no text returned)");
+    if (d.files.length) {
+      const wrap = document.createElement("div"); wrap.className = "files";
+      wrap.innerHTML = d.files.map(f => `<a href="${f.url}" download><span class="ext">${esc(f.name.split(".").pop().toUpperCase())}</span>${esc(f.name.replace(/-\d{8}-\d{6}(?=\.\w+$)/, ""))}</a>`).join("");
+      answer.appendChild(wrap);
+    }
+    const rows = d.routed.map(h => {
+      const t = h.timings || {}; const bits = [`${h.seconds}s`];
+      if (t.first_token != null) bits.push(`first word ${t.first_token}s`);
+      if (t.tools) bits.push(`tools ${t.tools}s`);
+      if (h.tool_calls.length) bits.push(h.tool_calls.join(", "));
+      return `<b>${esc(h.agent)}</b><span>${esc(bits.join(" · "))}</span>`;
+    }).join("");
+    const how = document.createElement("details"); how.className = "how";
+    how.innerHTML = `<summary>How this was handled — ${esc(d.route_reason)}${d.context_docs.length ? "; context from " + esc(d.context_docs.join(", ")) : ""}</summary>
+      <div class="grid">${rows}</div>
+      ${d.extracted && d.routed.length > 1 ? `<pre class="extract">${esc(d.extracted)}</pre>` : ""}
+      <pre>${esc(d.trace.join("\n"))}</pre>`;
+    turn.appendChild(how);
+    // mark every node done in case a stage event was missed
+    track.querySelectorAll(".node").forEach(n => { n.classList.remove("active", "pending"); n.classList.add("done"); });
+  }
+
+  function fail(answer, track, message) {
+    answer.className = "answer error";
+    answer.innerHTML = `${esc(message)}<div class="fix"><button type="button" class="attach" id="retry">Try again</button></div>`;
+    track.querySelectorAll(".node.active").forEach(n => n.classList.remove("active"));
+    $("#retry", answer).addEventListener("click", () => { state.busy = false; send(state.last); });
+  }
+
+  // ---- tiny markdown -----------------------------------------------------------------------
+  function render(md) {
+    const lines = md.replace(/\r/g, "").split("\n"); const out = []; let i = 0;
+    const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|\W)\*([^*\n]+)\*(?=\W|$)/g, "$1<i>$2</i>");
+    while (i < lines.length) {
+      const l = lines[i];
+      if (/^```/.test(l)) { const buf = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++; out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`); continue; }
+      if (/^\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\|?\s*:?-{2,}/.test(lines[i + 1])) {
+        const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => inline(c.trim()));
+        const head = cells(l); i += 2; const body = [];
+        while (i < lines.length && /^\|.*\|\s*$/.test(lines[i])) body.push(cells(lines[i++]));
+        out.push(`<table><thead><tr>${head.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>${body.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`); continue;
+      }
+      const h = /^(#{1,6})\s+(.*)/.exec(l); if (h) { out.push(`<h${Math.min(h[1].length + 2, 4)}>${inline(h[2])}</h${Math.min(h[1].length + 2, 4)}>`); i++; continue; }
+      if (/^\s*[-*•]\s+/.test(l)) { const items = []; while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) items.push(inline(lines[i++].replace(/^\s*[-*•]\s+/, ""))); out.push(`<ul>${items.map(x => `<li>${x}</li>`).join("")}</ul>`); continue; }
+      if (/^\s*\d+[.)]\s+/.test(l)) { const items = []; while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(inline(lines[i++].replace(/^\s*\d+[.)]\s+/, ""))); out.push(`<ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`); continue; }
+      if (!l.trim()) { i++; continue; }
+      const para = []; while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*[-*•]\s|\s*\d+[.)]\s|\||```)/.test(lines[i])) para.push(lines[i++]);
+      if (!para.length) { para.push(l); i++; }
+      out.push(`<p>${inline(para.join(" "))}</p>`);
+    }
+    return out.join("");
+  }
+})();
 </script>
 </body>
 </html>

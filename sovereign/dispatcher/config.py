@@ -47,11 +47,20 @@ VISION_AGENT_TOOLS = os.environ.get("VISION_AGENT_TOOLS", "0") == "1"
 TURN_TIMEOUT_S = float(os.environ.get("TURN_TIMEOUT_S", "240"))
 CONNECT_TIMEOUT_S = float(os.environ.get("CONNECT_TIMEOUT_S", "5"))
 
-# Normalization caps. Small models have small context windows.
+# Normalization caps. Small models have small context windows, and prefill is the slow direction
+# on a laptop: every token here is paid for on every call.
 MAX_TABLE_ROWS = int(os.environ.get("MAX_TABLE_ROWS", "40"))
 MAX_PDF_PAGES = int(os.environ.get("MAX_PDF_PAGES", "4"))
-PDF_RENDER_SCALE = float(os.environ.get("PDF_RENDER_SCALE", "2.0"))
+PDF_RENDER_SCALE = float(os.environ.get("PDF_RENDER_SCALE", "1.3"))
+MAX_IMAGE_EDGE = int(os.environ.get("MAX_IMAGE_EDGE", "1024"))  # ~1k visual tokens; 2x edge = 4x tokens
 SCANNED_PDF_CHARS_PER_PAGE = int(os.environ.get("SCANNED_PDF_CHARS_PER_PAGE", "200"))
 MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "12000"))
 MAX_CONTEXT_DOCS = int(os.environ.get("MAX_CONTEXT_DOCS", "2"))
-MAX_CONTEXT_CHARS_PER_DOC = int(os.environ.get("MAX_CONTEXT_CHARS_PER_DOC", "1500"))
+MAX_CONTEXT_CHARS_PER_DOC = int(os.environ.get("MAX_CONTEXT_CHARS_PER_DOC", "900"))
+
+# Latency levers.
+# Qwen3 "thinks" before every answer unless told not to; that is hidden tokens before the first
+# visible word. The /no_think soft switch turns it off. Harmless on models that do not support it.
+NO_THINK = os.environ.get("NO_THINK", "1") == "1"
+# The sandbox adds several KB of harness guidance plus tools to every prompt. Only Flow 6 needs it.
+ENABLE_SANDBOX = os.environ.get("ENABLE_SANDBOX", "0") == "1"

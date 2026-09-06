@@ -62,13 +62,21 @@ def normalize(filename: str, data: bytes) -> list[Part]:
 def _image(filename: str, data: bytes) -> ImagePart:
     from PIL import Image
 
-    img = Image.open(io.BytesIO(data))
+    png = _to_png(Image.open(io.BytesIO(data)))
+    return ImagePart(filename, png, _save(Path(filename).stem, png))
+
+
+def _to_png(img) -> bytes:
+    """Normalize mode and cap the long edge: vision-model cost scales with pixel count."""
+    from PIL import Image
+
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
+    if max(img.size) > config.MAX_IMAGE_EDGE:
+        img.thumbnail((config.MAX_IMAGE_EDGE, config.MAX_IMAGE_EDGE), Image.LANCZOS)
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    png = buf.getvalue()
-    return ImagePart(filename, png, _save(Path(filename).stem, png))
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
 
 
 def _save(stem: str, png: bytes) -> Path:
@@ -103,11 +111,7 @@ def _rasterize(filename: str, data: bytes, page_count: int) -> list[Part]:
     parts: list[Part] = []
     limit = min(page_count, config.MAX_PDF_PAGES)
     for i in range(limit):
-        bitmap = doc[i].render(scale=config.PDF_RENDER_SCALE)
-        pil = bitmap.to_pil().convert("RGB")
-        buf = io.BytesIO()
-        pil.save(buf, format="PNG")
-        png = buf.getvalue()
+        png = _to_png(doc[i].render(scale=config.PDF_RENDER_SCALE).to_pil())
         label = f"{filename} (page {i + 1}/{page_count})"
         parts.append(ImagePart(label, png, _save(f"{Path(filename).stem}-p{i + 1}", png)))
     if page_count > limit:

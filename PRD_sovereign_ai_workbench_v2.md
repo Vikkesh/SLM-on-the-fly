@@ -75,8 +75,9 @@ Reading and creating documents — scans, photos, spreadsheets, Word files — i
 - **Client access path.** The dispatcher serves its own minimal upload-plus-chat page. TrueForge's bundled UI posts straight to TrueForge's API with a user-picked agent, bypassing the router — which would delete automatic routing, a must-demo criterion. Reverse-proxying the bundled UI (intercepting session-create, passing SSE streams through) is possible but too risky for the time budget. The bundled UI stays available as a manual-pick fallback.
 - **Custom MCP tool server** — an **HTTP** MCP server (FastMCP `streamable-http`) on `127.0.0.1:9000`, registered under Settings → Connectors as `sovereign-tools`:
   - `extract_from_scan(image_path) -> text` — Tesseract OCR; complements the vision model's read with exact characters
-  - `generate_docx(title, sections, template=None) -> path` — `python-docx`, writes to `output/` on the host (not inside the sandbox)
-  - (stretch) `generate_xlsx(rows) -> path` — `openpyxl`
+  - `generate_docx` / `generate_pdf` — the same document structure (metadata table, sections with paragraphs, bullets and tables, sign-off) as Word or PDF; written to `output/` on the host
+  - `generate_xlsx` — one or many sheets with a proper header row
+  - `list_outputs` — what has been generated so far
   - Tools are annotated read-only or approval is disabled per server so nothing pauses.
 - **Procedure `scan-to-approval-note`** — written as a `SKILL.md` (structure, mandatory fields, risk rating rules, formal tone — exactly what the writer model is most likely to get wrong) but **not registered as a TrueForge skill**: the API's skill URL is regex-locked to GitHub/GitLab and the sandbox clones it at runtime, which cannot happen offline. `dispatcher/agents.py` strips the frontmatter and embeds the body in the Doc Agent's `instructions`. Same content, zero infrastructure; pushing the directory to GitHub later restores the real skill mechanism unchanged.
 - **Sandbox** — TrueForge's local sandbox, on the Doc Agent only, for exactly one job: Flow 6 code execution. Not used for reading uploads, not needed for the procedure. First init pip-installs `pydantic` from PyPI, so it is **warmed up while still online** (§8).
@@ -188,6 +189,7 @@ Follow-up turn in the same session ("make the tone more formal," "add a correcti
 - **Skills are unusable offline** (GitHub/GitLab-only URLs, cloned at runtime). Resolved by embedding the `SKILL.md` body in the Doc Agent's instructions; the sandbox is now Flow 6 only.
 - **Scanned PDFs are rejected by Ollama** — TrueForge sends them as an OpenAI `file` part. Dispatcher rasterizes to PNG; keep a PNG sample as the primary demo input regardless.
 - **Ollama's default context window truncates prompts** silently. Modelfiles with `num_ctx` are mandatory, not optional.
+- **Response latency on 7–8B models is dominated by prompt size and hidden reasoning.** Qwen3 thinks before answering unless told `/no_think`; the sandbox and generative-UI capabilities each inject large guidance blocks; a full-resolution scan is thousands of visual tokens. All are off/capped by default in the dispatcher, the page streams tokens as they arrive, and every answer shows first-word / tool / total time per hop so regressions are visible.
 - **Two-laptop link is a single point of failure** — direct cable plus a tested single-laptop fallback with both models on Laptop B.
 - **Context injection is intentionally shallow (not RAG)** — state it as a scoping decision when asked.
 - **TrueForge's docs lag its code** (sandbox providers, instruction variables, file handling). Verify against `packages/`, not `docs/`.

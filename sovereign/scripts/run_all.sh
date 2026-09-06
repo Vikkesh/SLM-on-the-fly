@@ -4,7 +4,11 @@
 #
 #   scripts/run_all.sh prepare                                   # needs internet, no model server
 #   scripts/run_all.sh start --ollama http://<model-laptop>:11434 --model TAG --vision-model TAG
-#                                                                # needs the model server, no internet
+# scripts/run_all.sh start --ollama http://10.165.33.98:11434 --model qwen3:8b --vision-model qwen2.5vl:7b
+                                                                # needs the model server, no internet
+
+#   scripts/run_all.sh restart                                   # after a code change: tools + dispatcher only,
+#                                                                # TrueForge keeps running; agents re-registered
 #   scripts/run_all.sh status [--ollama URL]
 #   scripts/run_all.sh stop
 #
@@ -17,12 +21,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 LOGS="$HERE/logs"; mkdir -p "$LOGS"
 PIDS="$LOGS/pids"
+ENVF="$LOGS/env"        # model server + model choices from the last start, reused by restart
 TF_DIR="$HERE/.trueforge"
 TF_BIN="$TF_DIR/node_modules/.bin/trueforge"
 TF_PORT="${TF_PORT:-8790}"; MCP_PORT="${MCP_PORT:-9000}"; DISP_PORT="${DISPATCHER_PORT:-8080}"
 
 cmd="${1:-}"; shift || true
-OLLAMA="${OLLAMA_URL:-}"; MODEL="${MODEL:-}"; VMODEL="${VISION_MODEL:-}"
+OLLAMA="${OLLAMA_URL:-}"; MODEL="${MODEL:-}"; VMODEL="${VISION_MODEL:-}"; VMODE="${VMODE:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ollama) OLLAMA="$2"; shift 2;;
@@ -40,6 +45,9 @@ up()   { curl -sf -m 3 "$1" >/dev/null 2>&1; }
 wait_for() { local url=$1 what=$2 n=${3:-60}; for _ in $(seq 1 "$n"); do up "$url" && return 0; sleep 1; done; die "$what did not come up ($url) - see $LOGS"; }
 running() { [[ -f "$PIDS" ]] && grep -q "^$1=" "$PIDS" && kill -0 "$(grep "^$1=" "$PIDS" | cut -d= -f2)" 2>/dev/null; }
 record()  { touch "$PIDS"; grep -v "^$1=" "$PIDS" > "$PIDS.tmp" || true; echo "$1=$2" >> "$PIDS.tmp"; mv "$PIDS.tmp" "$PIDS"; }
+# Start a service detached: the subshell execs it with all three fds redirected, so $! is the
+# service pid and it never holds our stdout (a pipe to `tee`/`sed` would otherwise never close).
+launch() { local name=$1; shift; ( cd "$HERE" && exec setsid nohup "$@" > "$LOGS/$name.log" 2>&1 < /dev/null ) & record "$name" $!; }
 load_nvm() { if [[ -s "$HOME/.nvm/nvm.sh" ]]; then . "$HOME/.nvm/nvm.sh"; nvm use 22 >/dev/null 2>&1 || nvm use default >/dev/null 2>&1 || true; fi; }
 node_major() { node -v 2>/dev/null | sed 's/v\([0-9]*\).*/\1/'; }
 
@@ -79,10 +87,22 @@ Next (no internet required):
 MSG
   exit 0;;
 # ================================================================================================
+restart)
+  [[ -f "$ENVF" ]] || die "nothing to restart from - run start first"
+  # shellcheck disable=SC1090
+  . "$ENVF"
+  for svc in mcp dispatcher; do
+    if running "$svc"; then pid=$(grep "^$svc=" "$PIDS" | cut -d= -f2); pkill -TERM -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; fi
+  done
+  # anything else squatting on our ports (an earlier run without a pids file)
+  for port in "$MCP_PORT" "$DISP_PORT"; do for pid in $(ss -ltnp 2>/dev/null | awk -v p=":$port " '$0 ~ p {print $0}' | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill "$pid" 2>/dev/null || true; done; done
+  sleep 1
+  exec "$0" start --ollama "$OLLAMA" --model "$MODEL" --vision-model "$VMODEL";;
+# ================================================================================================
 stop)
   [[ -f "$PIDS" ]] || { echo "nothing recorded"; exit 0; }
   while IFS== read -r name pid; do
-    if kill -0 "$pid" 2>/dev/null; then pkill -TERM -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; echo "stopped $name ($pid)"; fi
+    if kill -0 "$pid" 2>/dev/null; then kill -TERM -- "-$pid" 2>/dev/null || pkill -TERM -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; echo "stopped $name ($pid)"; fi
   done < "$PIDS"
   rm -f "$PIDS"; exit 0;;
 # ================================================================================================
@@ -109,27 +129,33 @@ load_nvm
 [[ -x "$TF_BIN" ]] && ok "trueforge present" || die "TrueForge not downloaded - run: $0 prepare (needs internet)"
 
 say "1/6 model server $OLLAMA"
-up "$OLLAMA/v1/models" || die "Ollama not reachable at $OLLAMA/v1/models - on that laptop run: OLLAMA_HOST=0.0.0.0:11434 ollama serve"
-TAGS=$(curl -s -m 5 "$OLLAMA/api/tags" | python3 -c 'import sys,json;print("\n".join(m["name"] for m in json.load(sys.stdin)["models"]))')
-ok "models: $(echo "$TAGS" | tr '\n' ' ')"
-if [[ -z "$MODEL" ]]; then
-  [[ $(echo "$TAGS" | wc -l) -eq 1 ]] && MODEL="$TAGS" || die "several models present - choose with --model TAG (writer) and --vision-model TAG (reader)"
+if up "$OLLAMA/v1/models"; then
+  TAGS=$(curl -s -m 5 "$OLLAMA/api/tags" | python3 -c 'import sys,json;print("\n".join(m["name"] for m in json.load(sys.stdin)["models"]))')
+  ok "models: $(echo "$TAGS" | tr '\n' ' ')"
+  if [[ -z "$MODEL" ]]; then
+    [[ $(echo "$TAGS" | wc -l) -eq 1 ]] && MODEL="$TAGS" || die "several models present - choose with --model TAG (writer) and --vision-model TAG (reader)"
+  fi
+  echo "$TAGS" | grep -qx "$MODEL" || die "model '$MODEL' is not on the server"
+  VMODEL="${VMODEL:-$MODEL}"
+  echo "$TAGS" | grep -qx "$VMODEL" || die "vision model '$VMODEL' is not on the server"
+  caps_of() { curl -s -m 5 "$OLLAMA/api/show" -d "{\"name\":\"$1\"}" | python3 -c 'import sys,json;print(" ".join(json.load(sys.stdin).get("capabilities") or []))'; }
+  VCAPS=$(caps_of "$VMODEL"); DCAPS=$(caps_of "$MODEL")
+  ok "doc model:    $MODEL ($DCAPS)"
+  if echo "$VCAPS" | grep -qw vision; then ok "vision model: $VMODEL ($VCAPS)"; VMODE=model
+  else warn "vision model: $VMODEL has no vision capability ($VCAPS) - images will be read with local Tesseract OCR"; VMODE=ocr; fi
+  echo "$DCAPS" | grep -qw tools || warn "'$MODEL' does not advertise tool calling - generate_docx may not be invoked reliably"
+elif [[ -n "$MODEL" ]]; then
+  VMODEL="${VMODEL:-$MODEL}"; VMODE="${VMODE:-model}"
+  warn "not reachable right now - starting anyway with $MODEL / $VMODEL (requests will fail cleanly until it is back)"
+else
+  die "Ollama not reachable at $OLLAMA/v1/models and no --model given - on that laptop run: OLLAMA_HOST=0.0.0.0:11434 ollama serve"
 fi
-echo "$TAGS" | grep -qx "$MODEL" || die "model '$MODEL' is not on the server"
-VMODEL="${VMODEL:-$MODEL}"
-echo "$TAGS" | grep -qx "$VMODEL" || die "vision model '$VMODEL' is not on the server"
-caps_of() { curl -s -m 5 "$OLLAMA/api/show" -d "{\"name\":\"$1\"}" | python3 -c 'import sys,json;print(" ".join(json.load(sys.stdin).get("capabilities") or []))'; }
-VCAPS=$(caps_of "$VMODEL"); DCAPS=$(caps_of "$MODEL")
-ok "doc model:    $MODEL ($DCAPS)"
-if echo "$VCAPS" | grep -qw vision; then ok "vision model: $VMODEL ($VCAPS)"; VMODE=model
-else warn "vision model: $VMODEL has no vision capability ($VCAPS) - images will be read with local Tesseract OCR"; VMODE=ocr; fi
-echo "$DCAPS" | grep -qw tools || warn "'$MODEL' does not advertise tool calling - generate_docx may not be invoked reliably"
+printf 'OLLAMA=%q\nMODEL=%q\nVMODEL=%q\nVMODE=%q\n' "$OLLAMA" "$MODEL" "$VMODEL" "$VMODE" > "$ENVF"
 
 say "2/6 TrueForge :$TF_PORT"
 if up "http://127.0.0.1:$TF_PORT/healthz"; then ok "already running"
 else
-  (cd "$HERE" && nohup "$TF_BIN" > "$LOGS/trueforge.log" 2>&1 & echo $! > "$LOGS/.tf.pid")
-  record trueforge "$(cat "$LOGS/.tf.pid")"; warn "starting ..."
+  launch trueforge "$TF_BIN"; warn "starting ..."
   wait_for "http://127.0.0.1:$TF_PORT/healthz" "TrueForge" 120
   ok "up"; grep -m1 -o "Local sandbox fallback is [a-z]*" "$LOGS/trueforge.log" | sed 's/^/   /' || true
 fi
@@ -137,16 +163,14 @@ fi
 say "3/6 MCP tools :$MCP_PORT"
 if running mcp; then ok "already running"
 else
-  (cd "$HERE" && nohup .venv/bin/python -m mcp_server.server > "$LOGS/mcp.log" 2>&1 & echo $! > "$LOGS/.mcp.pid")
-  record mcp "$(cat "$LOGS/.mcp.pid")"; sleep 2; ok "up (log: logs/mcp.log)"
+  launch mcp .venv/bin/python -m mcp_server.server; sleep 2; ok "up (log: logs/mcp.log)"
 fi
 
 say "4/6 dispatcher :$DISP_PORT"
 if running dispatcher; then ok "already running (restart with: $0 stop && $0 start ...)"
 else
-  (cd "$HERE" && OLLAMA_URL="$OLLAMA" VISION_MODEL_ID="$VMODEL" DOC_MODEL_ID="$MODEL" VISION_MODE="$VMODE" \
-     nohup .venv/bin/python -m dispatcher.app > "$LOGS/dispatcher.log" 2>&1 & echo $! > "$LOGS/.disp.pid")
-  record dispatcher "$(cat "$LOGS/.disp.pid")"
+  OLLAMA_URL="$OLLAMA" VISION_MODEL_ID="$VMODEL" DOC_MODEL_ID="$MODEL" VISION_MODE="$VMODE" \
+    launch dispatcher .venv/bin/python -m dispatcher.app
   wait_for "http://127.0.0.1:$DISP_PORT/api/health" "dispatcher" 30; ok "up"
 fi
 
@@ -163,5 +187,5 @@ Test, in this order:
   3. attach the same file + type: draft the approval note               -> a .docx download link
   4. attach: samples/p301-readings.xlsx + type: summarise these against the pump limits
 
-Logs: $LOGS/{trueforge,mcp,dispatcher}.log      Stop everything: $0 stop
+Logs: $LOGS/{trueforge,mcp,dispatcher}.log      After a code change: $0 restart      Stop everything: $0 stop
 MSG

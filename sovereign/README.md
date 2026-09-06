@@ -6,7 +6,7 @@ its HTTP API and MCP. Design: `../ARCHITECTURE_sovereign_ai_workbench.md`. Scope
 
 ```
 dispatcher/     router: normalize files -> classify -> context -> chain Vision->Doc -> banner   (:8080)
-mcp_server/     HTTP MCP tools: extract_from_scan (OCR), generate_docx, generate_xlsx           (:9000)
+mcp_server/     HTTP MCP tools: extract_from_scan (OCR), generate_docx / generate_pdf / generate_xlsx, list_outputs (:9000)
 skills/         scan-to-approval-note/SKILL.md  (embedded into the Doc Agent's instructions)
 context/        sample SOP / manual excerpts used for keyword context lookup
 samples/        synthetic scan + spreadsheet for testing  (make with scripts/make_sample.py)
@@ -24,6 +24,7 @@ scripts/run_all.sh prepare
 # on the network that reaches the model server (no internet needed)
 scripts/run_all.sh start --ollama http://<model-laptop>:11434 --model qwen3:8b --vision-model qwen2.5vl:7b
 
+scripts/run_all.sh restart      # after a code change: tools + dispatcher only, TrueForge stays up
 scripts/run_all.sh status
 scripts/run_all.sh stop
 ```
@@ -59,13 +60,22 @@ orchestrator prep, including the sandbox warm-up that must happen **before unplu
 4. `dispatcher/pipeline.py` runs the stages: Vision Agent reads → text carried into the Doc Agent,
    which writes and calls `generate_docx`. Sessions are created with an **inline agent spec** so
    the context lands in `instructions` (TrueForge has no prompt templating).
-5. `dispatcher/app.py` returns the answer, the "Routed to" banner, tool calls, and download links.
+5. `dispatcher/app.py` streams it all to the page over SSE (`/api/ask/stream`): route, each stage
+   starting/finishing with timings, every token, every tool call, then the files. `/api/ask` is the
+   same thing as one JSON response for scripts.
 
 ## Environment knobs
 
 All in `dispatcher/config.py`; override by env var. The ones you will touch:
 `OLLAMA_URL`, `TRUEFORGE_URL`, `PROVIDER_NAME` (default `ollama`), `VISION_AGENT_TOOLS=1` to let
 the Vision Agent call tools (fallback path), `TURN_TIMEOUT_S`, `MAX_TABLE_ROWS`, `MAX_PDF_PAGES`.
+
+Latency levers (all default to the fast setting): `NO_THINK=1` appends Qwen3's `/no_think` switch so
+the writer does not spend hidden tokens reasoning before every answer; `ENABLE_SANDBOX=1` turns the
+sandbox back on for the code-execution demo (it adds a large block of harness guidance to every
+prompt, so it is off otherwise); `MAX_IMAGE_EDGE` (1024) caps scan resolution — vision cost scales
+with pixels; `MAX_CONTEXT_CHARS_PER_DOC` (900). The "How this was handled" panel under every answer
+shows first-word time, tool time and total per hop, so you can see where the seconds went.
 
 ## Known constraints (verified against TrueForge's code)
 

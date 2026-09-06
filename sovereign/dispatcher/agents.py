@@ -15,7 +15,8 @@ _LEAN_CONFIG = {
     "dynamic_sub_agents": {"enabled": False},
     "generative_ui": {"enabled": False},
     "ask_user_questions": {"enabled": False},
-    "context_management": {"compaction": {"enabled": True}, "large_tool_response": {"enabled": True}},
+    # large_tool_response adds its own guidance block; our tools return one short line each.
+    "context_management": {"compaction": {"enabled": True}, "large_tool_response": {"enabled": False}},
 }
 
 _TOOLS = {
@@ -42,8 +43,12 @@ Rules:
 - Formal, precise register. Full sentences. No chat filler, no emojis, no markdown headings inside prose.
 - Cite the SOP or manual section you relied on when the context contains one.
 - Never invent readings, dates, names or asset IDs. If something is missing, leave a clearly marked placeholder.
-- When asked to produce a document, ALWAYS call the generate_docx tool and then report the returned path.
-  Do not paste the whole document into chat; give a 2-3 line summary and the file path.
+- When asked for a document, call generate_docx (Word), generate_pdf (PDF) or generate_xlsx (Excel) - the
+  one the user asked for, Word if unspecified - then report the returned path with a 2-3 line summary.
+  Never paste the whole document into chat.
+- Use a `table` in a section whenever there are readings to compare against limits."""
+
+SANDBOX_NOTE = """
 - When asked to write and run code, write plain Python using only the standard library or packages already
   installed in the sandbox; the sandbox has no internet access."""
 
@@ -58,10 +63,14 @@ def skill_body() -> str:
     return re.sub(r"^---.*?---\s*", "", text, count=1, flags=re.S).strip()
 
 
+def _finish(instructions: str) -> str:
+    return instructions + ("\n/no_think" if config.NO_THINK else "")
+
+
 def vision_spec() -> dict:
     spec = {
         "model": {"name": config.VISION_MODEL_FQN, "params": {"temperature": 0.1}},
-        "instructions": VISION_INSTRUCTIONS,
+        "instructions": _finish(VISION_INSTRUCTIONS),
         "config": {**_LEAN_CONFIG, "sandbox": {"enabled": False}, "iteration_limit": 3},
     }
     if config.VISION_AGENT_TOOLS:
@@ -70,7 +79,7 @@ def vision_spec() -> dict:
 
 
 def doc_spec(company_context: str = "") -> dict:
-    instructions = DOC_INSTRUCTIONS_BASE
+    instructions = DOC_INSTRUCTIONS_BASE + (SANDBOX_NOTE if config.ENABLE_SANDBOX else "")
     body = skill_body()
     if body:
         instructions += "\n\n## Procedure: scan-to-approval-note\n" + body
@@ -80,7 +89,11 @@ def doc_spec(company_context: str = "") -> dict:
         instructions += "\n\n## Company context\n(no matching SOP found for this request)"
     return {
         "model": {"name": config.DOC_MODEL_FQN, "params": {"temperature": 0.3}},
-        "instructions": instructions,
+        "instructions": _finish(instructions),
         "mcp_servers": [_TOOLS],
-        "config": {**_LEAN_CONFIG, "sandbox": {"enabled": True, "file_downloads": True}, "iteration_limit": 10},
+        "config": {
+            **_LEAN_CONFIG,
+            "sandbox": {"enabled": config.ENABLE_SANDBOX, "file_downloads": True},
+            "iteration_limit": 8,
+        },
     }

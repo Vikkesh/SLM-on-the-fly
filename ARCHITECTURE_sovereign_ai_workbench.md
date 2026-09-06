@@ -160,7 +160,7 @@ compaction, sandbox lifecycle, and file download.
 | model | `custom/vision-model` | `custom/doc-model` | |
 | MCP servers | `sovereign-tools` (optional) | `sovereign-tools` | Doc Agent drives the tools; Vision Agent may, as fallback |
 | skills | none | none (procedure embedded in `instructions`) | TrueForge only accepts github.com/gitlab.com skill URLs — unusable offline |
-| `config.sandbox.enabled` | `false` | `true` | skills + Flow 6 need it; Vision Agent has no use for it |
+| `config.sandbox.enabled` | `false` | `false` (`ENABLE_SANDBOX=1` for Flow 6) | adds several KB of harness guidance + tools to every prompt; only code execution needs it |
 | `dynamic_sub_agents` | `false` | `false` | on by default; adds prompt + schema weight a 7–8B model can't afford |
 | `generative_ui` | `false` | `false` | same |
 | `ask_user_questions` | `false` | `false` | same — and a paused turn looks like a hang on stage |
@@ -168,6 +168,8 @@ compaction, sandbox lifecycle, and file download.
 | `require_approval_for_tools` | — | `[]` | default `["@write","@destructive"]` pauses for Allow/Deny mid-demo |
 | `iteration_limit` | `3` | `10` | fail fast instead of looping |
 | `compaction` | default | default | free |
+| `large_tool_response` | off | off | its guidance block is dead weight for one-line tool results |
+| instructions suffix | `/no_think` | `/no_think` | Qwen3 otherwise reasons in hidden tokens before every visible word |
 
 ### 4.4 MCP tool server (ours)
 
@@ -178,8 +180,10 @@ under Settings → Connectors as a plain URL named `sovereign-tools`.
 | Tool | Does | Library |
 | --- | --- | --- |
 | `extract_from_scan(image_path) → text` | Tesseract OCR; complements the vision model's read with exact characters | `pytesseract` |
-| `generate_docx(title, sections, template?) → path` | Writes a real Word document to `output/` | `python-docx` |
-| `generate_xlsx(rows) → path` | Stretch: tabular deliverable | `openpyxl` |
+| `generate_docx(title, sections, metadata?, signoff?) → path` | Formal Word document: metadata table, sections with paragraphs / bullets / tables, sign-off block | `python-docx` |
+| `generate_pdf(...)` — same shape | Same document as PDF | `reportlab` |
+| `generate_xlsx(headers, rows \| sheets) → path` | One or many sheets, bold frozen header, autofilter, numeric cells | `openpyxl` |
+| `list_outputs()` | What has been generated so far | — |
 
 Tools are annotated read-only or approval is disabled per server, so nothing pauses.
 
