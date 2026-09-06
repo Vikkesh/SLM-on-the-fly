@@ -67,6 +67,8 @@ flowchart LR
 
 The two thick links are the **only** traffic that crosses the cable. Everything else is localhost on
 the operator's laptop.
+## Demo
+![](https://github.com/Vikkesh/SLM-on-the-fly/blob/main/export-v103-b3f7-ezgif.com-speed.gif)
 
 ## How a request moves
 
