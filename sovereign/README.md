@@ -1,7 +1,7 @@
-# sovereign/ — the workbench layer on top of TrueForge
+# sovereign/ — SAI, the workbench layer
 
-Everything we wrote lives here. `packages/` (TrueForge) is untouched; we talk to it only through
-its HTTP API and MCP. Design: `../ARCHITECTURE_sovereign_ai_workbench.md`. Scope:
+Everything SAI adds lives here. The agent engine under `packages/` is used as-is through its HTTP
+API and MCP; nothing there is modified. Design: `../ARCHITECTURE_sovereign_ai_workbench.md`. Scope:
 `../PRD_sovereign_ai_workbench_v2.md`.
 
 ```
@@ -18,20 +18,20 @@ uploads/        normalized PNGs, readable by extract_from_scan (gitignored)
 ## Run (Laptop B) — two commands
 
 ```bash
-# on a good internet connection (no model server needed): node 22, venv, a local copy of TrueForge, samples
+# on a good internet connection (no model server needed): node 22, venv, a local copy of the agent engine, samples
 scripts/run_all.sh prepare
 
 # on the network that reaches the model server (no internet needed)
 scripts/run_all.sh start --ollama http://<model-laptop>:11434 --model qwen3:8b --vision-model qwen2.5vl:7b
 
-scripts/run_all.sh restart      # after a code change: tools + dispatcher only, TrueForge stays up
+scripts/run_all.sh restart      # after a code change: tools + dispatcher only, the agent engine stays up
 scripts/run_all.sh status
 scripts/run_all.sh stop
 ```
 
 `--model` is the writer (Doc Agent), `--vision-model` the reader (Vision Agent). With one
 text-only model on the server, images are read with local Tesseract OCR and the banner says so
-(`OCR (tesseract) -> Doc Agent`). Logs land in `logs/`; TrueForge lives in `.trueforge/`.
+(`OCR (tesseract) -> Doc Agent`). Logs land in `logs/`; `prepare` installs the engine locally so `start` needs no network.
 
 ## Run by hand
 
@@ -40,11 +40,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # once
 .venv/bin/python -m scripts.make_sample                              # optional test inputs
 
 # three terminals
-npx @truefoundry/trueforge@latest                 # TrueForge, standalone, :8790
+.trueforge/node_modules/.bin/trueforge             # the agent engine, standalone, :8790 (installed by prepare)
 scripts/run_mcp.sh                                # tools, :9000
 OLLAMA_URL=http://<laptop-a>:11434 scripts/run_dispatcher.sh   # :8080  -> open http://127.0.0.1:8080
 
-# once TrueForge is up (idempotent):
+# once the agent engine is up (idempotent):
 .venv/bin/python -m scripts.register --ollama http://<laptop-a>:11434
 ```
 
@@ -57,9 +57,11 @@ orchestrator prep, including the sandbox warm-up that must happen **before unplu
    xlsx/csv → markdown table; docx → text). The models never see a file.
 2. `dispatcher/classify.py` picks the route by file type + intent words. Deterministic.
 3. `dispatcher/context.py` keyword-matches `context/*.md` and returns a short excerpt.
-4. `dispatcher/pipeline.py` runs the stages: Vision Agent reads → text carried into the Doc Agent,
+4. `dispatcher/pipeline.py` runs the stages: the reader (`reader.py`, a direct streaming call to
+   Ollama — the engine would attach a built-in tool and Ollama rejects that for `qwen2.5vl`) reads →
+   text carried into the Doc Agent,
    which writes and calls `generate_docx`. Sessions are created with an **inline agent spec** so
-   the context lands in `instructions` (TrueForge has no prompt templating).
+   the context lands in `instructions` (the agent engine has no prompt templating).
 5. `dispatcher/app.py` streams it all to the page over SSE (`/api/ask/stream`): route, each stage
    starting/finishing with timings, every token, every tool call, then the files. `/api/ask` is the
    same thing as one JSON response for scripts.
@@ -77,7 +79,7 @@ prompt, so it is off otherwise); `MAX_IMAGE_EDGE` (1024) caps scan resolution �
 with pixels; `MAX_CONTEXT_CHARS_PER_DOC` (900). The "How this was handled" panel under every answer
 shows first-word time, tool time and total per hop, so you can see where the seconds went.
 
-## Known constraints (verified against TrueForge's code)
+## Known constraints (verified against the engine's code)
 
 - Skills must come from `github.com`/`gitlab.com` — the API rejects other URLs. Offline, the
   skill mechanism is unusable, so `SKILL.md` is embedded into the Doc Agent prompt by `agents.py`.

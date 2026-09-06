@@ -306,6 +306,7 @@ the cable.
   op ◀── summary + download link
          + [Routed to: Vision Agent (qwen2.5vl:7b) → Doc Agent (qwen3:8b)]
 ```
+Stage A is a plain extraction call with no tools — and it goes from the dispatcher **straight to Ollama** (`dispatcher/reader.py`), not through the engine: the engine attaches a built-in tool to every agent, and Ollama refuses tool-bearing requests for `qwen2.5vl`. Stage B is where all agency lives. A later question about the same scan reaches the writer with the reader's findings attached once.
 The two-stage chain is a **design choice for reliability**, not a constraint: both models can
 call tools, so if the chain misbehaves the Vision Agent can complete the flow alone as a
 fallback. Chaining stays primary because two short single-purpose turns beat one long
