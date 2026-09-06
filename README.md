@@ -21,9 +21,9 @@ approval note — with every byte staying on the LAN.
 
 | | |
 |---|---|
-| 🧭 **Automatic routing** | Each request goes to the model suited to it — a *reader* for images, a *writer* for text and documents — and the route is shown on every answer, with timings. |
-| 📄 **Real deliverables** | `.docx`, `.pdf` and `.xlsx` files produced by tools, not text pasted into a chat. |
-| 🔒 **Provably offline** | The only network traffic is model inference to the server laptop. Tools, files and sessions never leave the operator's machine. |
+| **Automatic routing** | Each request goes to the model suited to it — a *reader* for images, a *writer* for text and documents — and the route is shown on every answer, with timings. |
+| **Real deliverables** | `.docx`, `.pdf` and `.xlsx` files produced by tools, not text pasted into a chat. |
+| **Provably offline** | The only network traffic is model inference to the server laptop. Tools, files and sessions never leave the operator's machine. |
 
 ## Architecture
 
