@@ -42,6 +42,9 @@ MCP_SERVER_NAME = os.environ.get("MCP_SERVER_NAME", "sovereign-tools")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://127.0.0.1:9000/mcp")
 # Let the Vision Agent call tools too (fallback path). Off by default: chaining is primary.
 VISION_AGENT_TOOLS = os.environ.get("VISION_AGENT_TOOLS", "0") == "1"
+# "direct": the reader calls Ollama itself (required for models Ollama marks as not supporting tools -
+# the engine always attaches a built-in tool). "engine": run the reader as an engine agent.
+VISION_BACKEND = os.environ.get("VISION_BACKEND", "engine" if VISION_AGENT_TOOLS else "direct")
 
 # Bounded so Flow 5 (server unreachable) fails cleanly instead of hanging.
 TURN_TIMEOUT_S = float(os.environ.get("TURN_TIMEOUT_S", "240"))

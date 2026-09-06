@@ -47,6 +47,7 @@ def health() -> dict:
         "ollama": ollama_reachable(),
         "models": {"vision": config.VISION_MODEL_LABEL, "doc": config.DOC_MODEL_LABEL},
         "vision_mode": vision.mode(),
+        "vision_backend": config.VISION_BACKEND,
         "sandbox": config.ENABLE_SANDBOX,
         "samples": sorted(p.name for p in SAMPLES.iterdir() if p.is_file()) if SAMPLES.is_dir() else [],
     }

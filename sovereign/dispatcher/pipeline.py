@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import agents, config, context, vision
+from . import agents, config, context, reader, vision
 from .classify import Route, classify
 from .normalize import ImagePart, Part, TextPart, normalize
 from .trueforge import TrueForgeClient, image_part, text_part
@@ -42,12 +42,24 @@ class SessionStore:
 
     def __init__(self) -> None:
         self._map: dict[str, dict[str, str]] = {}
+        # last reader output per client, handed to the writer once so follow-ups about a scan work
+        self._extracted: dict[str, tuple[str, bool]] = {}
 
     def get(self, client_id: str, stage: str) -> str | None:
         return self._map.get(client_id, {}).get(stage)
 
     def put(self, client_id: str, stage: str, session_id: str) -> None:
         self._map.setdefault(client_id, {})[stage] = session_id
+
+    def remember_extraction(self, client_id: str, text: str) -> None:
+        self._extracted[client_id] = (text, False)
+
+    def unshared_extraction(self, client_id: str) -> str | None:
+        text, shared = self._extracted.get(client_id, ("", True))
+        if shared or not text:
+            return None
+        self._extracted[client_id] = (text, True)
+        return text
 
 
 class Dispatcher:
@@ -91,6 +103,7 @@ class Dispatcher:
             extracted, hop = self._vision(client_id, prompt, images, texts, chained="doc" in route.stages, emit=emit)
             hops.append(hop)
             answer = extracted
+            self.sessions.remember_extraction(client_id, extracted)
             trace.append(f"vision: {len(extracted)} chars in {hop.seconds}s (first token {hop.timings.get('first_token')}s), tools={hop.tool_calls or '-'}")
 
         if "doc" in route.stages:
@@ -111,13 +124,20 @@ class Dispatcher:
 
     def _vision(self, client_id, prompt, images, texts, chained: bool, emit: Emit) -> tuple[str, Hop]:
         emit({"type": "stage", "stage": "vision", "agent": "Vision Agent", "model": config.VISION_MODEL_LABEL, "status": "start"})
+        ask = "Transcribe this document completely and list the key findings." if chained or not prompt else prompt
+        if chained and prompt:
+            ask += f"\n(The operator's overall request, for context only: {prompt})"
+        if config.VISION_BACKEND == "direct":
+            t0 = time.time()
+            r = reader.read(ask, [img.png for img in images], [f"Attached text from {t.label}:\n{t.text}" for t in texts],
+                            emit=lambda e: emit({**e, "stage": "vision"}))
+            hop = Hop("vision", "Vision Agent", config.VISION_MODEL_LABEL, [], round(time.time() - t0, 1), r.timings)
+            emit({"type": "stage", "stage": "vision", "status": "done", "seconds": hop.seconds, "timings": r.timings})
+            return r.text, hop
         sid = self.sessions.get(client_id, "vision")
         if sid is None:
             sid = self.tf.create_session(agents.vision_spec())
             self.sessions.put(client_id, "vision", sid)
-        ask = "Transcribe this document completely and list the key findings." if chained or not prompt else prompt
-        if chained and prompt:
-            ask += f"\n(The operator's overall request, for context only: {prompt})"
         content = [text_part(ask)]
         content += [text_part(f"Attached text from {t.label}:\n{t.text}") for t in texts]
         content += [image_part(f"{i + 1}-{_safe(img.label)}.png", img.png) for i, img in enumerate(images)]
@@ -141,6 +161,8 @@ class Dispatcher:
         blocks = [prompt or "Proceed."]
         if extracted:
             blocks.append("## Findings extracted by the Vision Agent from the attached scan\n" + extracted)
+        elif (earlier := self.sessions.unshared_extraction(client_id)):
+            blocks.append("## Findings the Vision Agent extracted earlier in this session\n" + earlier)
         blocks += [f"## Attached: {t.label}\n{t.text}" for t in texts]
         t0 = time.time()
         r = self.tf.run_turn(sid, "\n\n".join(blocks), emit=lambda e: emit({**e, "stage": "doc"}))
