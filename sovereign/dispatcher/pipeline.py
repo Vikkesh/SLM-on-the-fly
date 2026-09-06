@@ -67,8 +67,12 @@ class Dispatcher:
         self.tf = client or TrueForgeClient()
         self.sessions = SessionStore()
 
-    def run(self, client_id: str, prompt: str, uploads: list[tuple[str, bytes]], emit: Emit | None = None) -> Result:
+    def run(self, client_id: str, prompt: str, uploads: list[tuple[str, bytes]], emit: Emit | None = None,
+            writer: str | None = None) -> Result:
+        """`writer` is an Ollama tag chosen in the page; it must be registered (register.py registers every
+        tag on the server). Unset means the configured writer."""
         emit = emit or (lambda _e: None)
+        writer = writer or config.DOC_MODEL_ID
         trace: list[str] = []
         parts: list[Part] = []
         for name, data in uploads:
@@ -107,7 +111,7 @@ class Dispatcher:
             trace.append(f"vision: {len(extracted)} chars in {hop.seconds}s (first token {hop.timings.get('first_token')}s), tools={hop.tool_calls or '-'}")
 
         if "doc" in route.stages:
-            answer, hop, ctx_docs = self._doc(client_id, prompt, texts, extracted, emit=emit)
+            answer, hop, ctx_docs = self._doc(client_id, prompt, texts, extracted, emit=emit, writer=writer)
             hops.append(hop)
             trace.append(
                 f"doc: {hop.seconds}s (first token {hop.timings.get('first_token')}s, tools {hop.timings.get('tools')}s), "
@@ -117,7 +121,7 @@ class Dispatcher:
                 trace.append(f"note: model emitted {hop.timings['reasoning_chars']} hidden reasoning chars - /no_think not honoured")
 
         files = _new_files(before)
-        session_id = self.sessions.get(client_id, "doc") or self.sessions.get(client_id, "vision") or ""
+        session_id = self.sessions.get(client_id, "doc") or ""
         return Result(answer, hops, route.reason, ctx_docs, files, session_id, extracted, trace)
 
     # --- stages -------------------------------------------------------------------------------
@@ -150,14 +154,15 @@ class Dispatcher:
         emit({"type": "stage", "stage": "vision", "status": "done", "seconds": hop.seconds, "timings": r.timings})
         return r.text, hop
 
-    def _doc(self, client_id, prompt, texts, extracted, emit: Emit) -> tuple[str, Hop, list[str]]:
-        emit({"type": "stage", "stage": "doc", "agent": "Doc Agent", "model": config.DOC_MODEL_LABEL, "status": "start"})
+    def _doc(self, client_id, prompt, texts, extracted, emit: Emit, writer: str) -> tuple[str, Hop, list[str]]:
+        emit({"type": "stage", "stage": "doc", "agent": "Doc Agent", "model": writer, "status": "start"})
         query = " ".join([prompt] + [t.text[:2000] for t in texts] + [extracted or ""])
         ctx, docs = context.resolve(query)
-        sid = self.sessions.get(client_id, "doc")
+        key = "doc" if writer == config.DOC_MODEL_ID else f"doc:{writer}"
+        sid = self.sessions.get(client_id, key)
         if sid is None:
-            sid = self.tf.create_session(agents.doc_spec(ctx))
-            self.sessions.put(client_id, "doc", sid)
+            sid = self.tf.create_session(agents.doc_spec(ctx, config.fqn(writer)))
+            self.sessions.put(client_id, key, sid)
         blocks = [prompt or "Proceed."]
         if extracted:
             blocks.append("## Findings extracted by the Vision Agent from the attached scan\n" + extracted)
@@ -166,7 +171,7 @@ class Dispatcher:
         blocks += [f"## Attached: {t.label}\n{t.text}" for t in texts]
         t0 = time.time()
         r = self.tf.run_turn(sid, "\n\n".join(blocks), emit=lambda e: emit({**e, "stage": "doc"}))
-        hop = Hop("doc", "Doc Agent", config.DOC_MODEL_LABEL, r.tool_calls, round(time.time() - t0, 1), r.timings)
+        hop = Hop("doc", "Doc Agent", writer, r.tool_calls, round(time.time() - t0, 1), r.timings)
         emit({"type": "stage", "stage": "doc", "status": "done", "seconds": hop.seconds, "timings": r.timings})
         return r.text, hop, docs
 

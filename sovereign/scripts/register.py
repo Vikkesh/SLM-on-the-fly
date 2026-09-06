@@ -45,23 +45,26 @@ def main() -> int:
 
 
 def provider(c: httpx.Client, args) -> None:
-    manifest = {
-        "type": "custom",
-        "name": config.PROVIDER_NAME,
-        "base_url": f"{args.ollama.rstrip('/')}/v1",
-        "models": [
-            {
-                "model_id": args.vision_id,
-                "name": config.VISION_MODEL_ALIAS,
-                "properties": {"context_length": 16384, "max_output_tokens": 4096},
-            },
-            {
-                "model_id": args.doc_id,
-                "name": config.DOC_MODEL_ALIAS,
-                "properties": {"context_length": 32768, "max_output_tokens": 8192},
-            },
-        ],
-    }
+    """Register every tag on the server (so the page's writer selector can pick any of them), always
+    including the configured reader and writer even if the server is unreachable right now."""
+    tags: list[str] = []
+    try:
+        tags = [m["name"] for m in httpx.get(f"{args.ollama.rstrip('/')}/api/tags", timeout=4).json().get("models", [])]
+    except (httpx.HTTPError, ValueError, KeyError):
+        print("    (model server unreachable - registering only the configured reader and writer)")
+    for t in (args.vision_id, args.doc_id):
+        if t not in tags:
+            tags.append(t)
+    seen: set[str] = set()
+    models = []
+    for t in tags:
+        a = config.alias(t)
+        if a in seen:
+            continue
+        seen.add(a)
+        models.append({"model_id": t, "name": a, "properties": {"context_length": 32768, "max_output_tokens": 8192}})
+    manifest = {"type": "custom", "name": config.PROVIDER_NAME, "base_url": f"{args.ollama.rstrip('/')}/v1", "models": models}
+    print(f"    models: {', '.join(m['name'] for m in models)}")
     existing = _find(c.get("/api/v1/settings/model-providers").json(), config.PROVIDER_NAME)
     if existing:
         r = c.put("/api/v1/settings/model-providers", json={"manifest": manifest})

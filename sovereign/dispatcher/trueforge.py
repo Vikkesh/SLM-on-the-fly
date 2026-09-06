@@ -178,6 +178,23 @@ def _friendly(message: str) -> str:
 _reach: tuple[float, bool] = (0.0, False)
 
 
+_models: tuple[float, list[str]] = (0.0, [])
+
+
+def ollama_models() -> list[str]:
+    """Tags on the server, cached briefly. Empty when unreachable."""
+    global _models
+    now = time.time()
+    if now - _models[0] < 15 and _models[1]:
+        return _models[1]
+    try:
+        tags = [m["name"] for m in httpx.get(f"{config.OLLAMA_URL}/api/tags", timeout=2).json().get("models", [])]
+    except (httpx.HTTPError, ValueError, KeyError):
+        tags = []
+    _models = (now, tags)
+    return tags
+
+
 def ollama_reachable() -> bool:
     """Cached for a few seconds: the health endpoint is polled, and a black-holed host costs a full timeout."""
     global _reach

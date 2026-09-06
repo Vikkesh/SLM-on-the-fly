@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from . import config, vision
 from .normalize import UnsupportedFile
 from .pipeline import Dispatcher, Result
-from .trueforge import TrueForgeError, ollama_reachable
+from .trueforge import TrueForgeError, ollama_models, ollama_reachable
 
 STATIC = Path(__file__).parent / "static"
 SAMPLES = config.ROOT / "samples"
@@ -48,6 +48,9 @@ def health() -> dict:
         "models": {"vision": config.VISION_MODEL_LABEL, "doc": config.DOC_MODEL_LABEL},
         "vision_mode": vision.mode(),
         "vision_backend": config.VISION_BACKEND,
+        "available_models": ollama_models(),
+        "writer": config.DOC_MODEL_ID,
+        "reader": config.VISION_MODEL_ID,
         "sandbox": config.ENABLE_SANDBOX,
         "samples": sorted(p.name for p in SAMPLES.iterdir() if p.is_file()) if SAMPLES.is_dir() else [],
     }
@@ -75,14 +78,20 @@ def _payload(result: Result, client_id: str) -> dict:
     }
 
 
+def _writer(choice: str) -> str | None:
+    """Only a tag the server actually has; anything else falls back to the configured writer."""
+    choice = choice.strip()
+    return choice if choice and choice in ollama_models() else None
+
+
 @app.post("/api/ask")
-async def ask(prompt: str = Form(""), client_session: str = Form(""), files: list[UploadFile] = File(default=[])):
+async def ask(prompt: str = Form(""), client_session: str = Form(""), writer: str = Form(""), files: list[UploadFile] = File(default=[])):
     client_id = client_session or uuid.uuid4().hex
     uploads = await _read_uploads(files)
     if not prompt.strip() and not uploads:
         raise HTTPException(400, "Type a prompt or attach a file.")
     try:
-        result = await asyncio.to_thread(dispatcher.run, client_id, prompt.strip(), uploads)
+        result = await asyncio.to_thread(dispatcher.run, client_id, prompt.strip(), uploads, None, _writer(writer))
     except UnsupportedFile as e:
         raise HTTPException(415, str(e)) from e
     except TrueForgeError as e:
@@ -91,18 +100,19 @@ async def ask(prompt: str = Form(""), client_session: str = Form(""), files: lis
 
 
 @app.post("/api/ask/stream")
-async def ask_stream(prompt: str = Form(""), client_session: str = Form(""), files: list[UploadFile] = File(default=[])):
+async def ask_stream(prompt: str = Form(""), client_session: str = Form(""), writer: str = Form(""), files: list[UploadFile] = File(default=[])):
     """SSE: `route`, `stage` (start/done), `delta` (text), `tool` (call/done), then `done` or `error`."""
     client_id = client_session or uuid.uuid4().hex
     uploads = await _read_uploads(files)
     if not prompt.strip() and not uploads:
         raise HTTPException(400, "Type a prompt or attach a file.")
+    chosen = _writer(writer)
 
     q: queue.Queue = queue.Queue()
 
     def work() -> None:
         try:
-            result = dispatcher.run(client_id, prompt.strip(), uploads, emit=q.put)
+            result = dispatcher.run(client_id, prompt.strip(), uploads, emit=q.put, writer=chosen)
             q.put({"type": "done", **_payload(result, client_id)})
         except UnsupportedFile as e:
             q.put({"type": "error", "error": str(e), "client_session": client_id})

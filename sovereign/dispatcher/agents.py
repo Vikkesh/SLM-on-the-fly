@@ -78,7 +78,7 @@ def vision_spec() -> dict:
     return spec
 
 
-def doc_spec(company_context: str = "") -> dict:
+def doc_spec(company_context: str = "", model_fqn: str | None = None) -> dict:
     instructions = DOC_INSTRUCTIONS_BASE + (SANDBOX_NOTE if config.ENABLE_SANDBOX else "")
     body = skill_body()
     if body:
@@ -88,7 +88,7 @@ def doc_spec(company_context: str = "") -> dict:
     else:
         instructions += "\n\n## Company context\n(no matching SOP found for this request)"
     return {
-        "model": {"name": config.DOC_MODEL_FQN, "params": {"temperature": 0.3}},
+        "model": {"name": model_fqn or config.DOC_MODEL_FQN, "params": {"temperature": 0.3}},
         "instructions": _finish(instructions),
         "mcp_servers": [_TOOLS],
         "config": {
