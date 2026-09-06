@@ -171,7 +171,7 @@ if running dispatcher; then ok "already running (restart with: $0 stop && $0 sta
 else
   OLLAMA_URL="$OLLAMA" VISION_MODEL_ID="$VMODEL" DOC_MODEL_ID="$MODEL" VISION_MODE="$VMODE" \
     launch dispatcher .venv/bin/python -m dispatcher.app
-  wait_for "http://127.0.0.1:$DISP_PORT/api/health" "dispatcher" 30; ok "up"
+  wait_for "http://127.0.0.1:$DISP_PORT/api/ping" "dispatcher" 60; ok "up"
 fi
 
 say "5/6 registering provider, tools and agents in TrueForge"
