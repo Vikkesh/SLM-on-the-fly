@@ -4,7 +4,7 @@
 #
 #   scripts/run_all.sh prepare                                   # needs internet, no model server
 #   scripts/run_all.sh start --ollama http://<model-laptop>:11434 --model TAG --vision-model TAG
-# scripts/run_all.sh start --ollama http://10.165.33.98:11434 --model qwen3:8b --vision-model qwen2.5vl:7b
+# Personally : scripts/run_all.sh start --ollama http://10.165.33.98:11434 --model qwen3:8b --vision-model qwen2.5vl:7b
                                                                 # needs the model server, no internet
 
 #   scripts/run_all.sh restart                                   # after a code change: tools + dispatcher only,
