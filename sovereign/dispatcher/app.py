@@ -34,6 +34,12 @@ def index() -> str:
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
+@app.get("/api/ping")
+def ping() -> dict:
+    """Readiness only - no upstream probes, so scripts can poll it cheaply."""
+    return {"ok": True}
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {

@@ -175,8 +175,18 @@ def _friendly(message: str) -> str:
     return f"The agent run failed: {message[:300]}"
 
 
+_reach: tuple[float, bool] = (0.0, False)
+
+
 def ollama_reachable() -> bool:
+    """Cached for a few seconds: the health endpoint is polled, and a black-holed host costs a full timeout."""
+    global _reach
+    now = time.time()
+    if now - _reach[0] < 5:
+        return _reach[1]
     try:
-        return httpx.get(f"{config.OLLAMA_URL}/v1/models", timeout=3).status_code == 200
+        ok = httpx.get(f"{config.OLLAMA_URL}/v1/models", timeout=2).status_code == 200
     except httpx.HTTPError:
-        return False
+        ok = False
+    _reach = (now, ok)
+    return ok
