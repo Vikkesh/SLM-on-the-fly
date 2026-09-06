@@ -17,7 +17,7 @@ Reads scans, photos and spreadsheets. Writes approval notes as Word, PDF or Exce
 Refineries and public-sector plants produce inspection reports, permits and readings that cannot be
 sent to a cloud model. SAI runs two open-weight models on one laptop and an agentic pipeline on the
 operator's laptop, so an engineer can drop in a scanned inspection report and get back a signed-off
-approval note — with every byte staying on the LAN.
+approval note, with every byte staying on the LAN.
 
 | | |
 |---|---|
