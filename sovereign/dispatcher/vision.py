@@ -4,22 +4,27 @@ configured model cannot see (single text-only model setups)."""
 from __future__ import annotations
 
 import io
-from functools import lru_cache
 
 import httpx
 
 from . import config
 
+_probed: str | None = None
 
-@lru_cache(maxsize=1)
+
 def mode() -> str:
-    """'model' or 'ocr'. VISION_MODE=auto asks Ollama whether the vision model has the capability."""
+    """'model' or 'ocr'. VISION_MODE=auto asks Ollama whether the vision model has the capability.
+    A failed probe is not cached, so a server that is down at boot does not lock us into OCR."""
+    global _probed
     if config.VISION_MODE in ("model", "ocr"):
         return config.VISION_MODE
+    if _probed is not None:
+        return _probed
     try:
-        r = httpx.post(f"{config.OLLAMA_URL}/api/show", json={"name": config.VISION_MODEL_ID}, timeout=5)
+        r = httpx.post(f"{config.OLLAMA_URL}/api/show", json={"name": config.VISION_MODEL_ID}, timeout=3)
         caps = r.json().get("capabilities") or []
-        return "model" if "vision" in caps else "ocr"
+        _probed = "model" if "vision" in caps else "ocr"
+        return _probed
     except (httpx.HTTPError, ValueError):
         return "ocr"
 
